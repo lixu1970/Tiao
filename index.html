@@ -40,8 +40,7 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
 <body>
 <div id="main">
   <div class="header">调课小程序</div>
-  <div class="tip">请输入星期 节次（可连续或节选例如123456或1256） 申请人姓名<br>也支持跨天，如：二12、三34杨鸿</div>
-  <input id="input" placeholder="例如：二12杨鸿 / 二1234杨鸿 / 二12、三34杨鸿">
+<input id="input" placeholder="例如：二12杨鸿 / 二1234杨鸿 / 二12、三34杨鸿">
   <div class="actionrow">
     <button class="blue" onclick="startSchedule()">开始调课</button>
     <button class="blue" onclick="openBrowser()">课表浏览</button>
@@ -53,15 +52,17 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
   <div class="planhead"><span>方案二</span><label class="pick">是否选择 <input id="c2" type="checkbox" onclick="choosePlan(2)"></label></div>
   <div id="p2" class="output"></div>
 
-  <div id="status"></div>
+  <div class="planhead"><span>方案三</span><label class="pick">是否选择 <input id="c3" type="checkbox" onclick="choosePlan(3)"></label></div>
+  <div id="p3" class="output"></div>
 
-  <div class="bottom">
+  <div class="planhead"><span>方案四</span><label class="pick">是否选择 <input id="c4" type="checkbox" onclick="choosePlan(4)"></label></div>
+  <div id="p4" class="output"></div>
+<div class="bottom">
     <button class="blue" onclick="downloadNewTable()">生成新课表</button>
     <button class="blue" onclick="printForm()">打印调课单</button>
     <button class="blue" onclick="clearAll()">清屏</button>
   </div>
-  <div class="note">测试算法：优先直接对调；撞课时自动寻找协助老师。最多允许3位被调课老师参与；周一56、周五56固定不参与调课。</div>
-  <div class="footer">沙河教务 V260910-4</div>
+<div class="footer">沙河教务 V260910-5</div>
 </div>
 
 <div id="browser">
@@ -251,7 +252,7 @@ function findSingleSolutions(baseState, req, maxSolutions=8){
   return sols;
 }
 
-function solveAll(parsed, variantLimit=2){
+function solveAll(parsed, variantLimit=4){
   const initial=deepClone(DATA.cells);
   const located=locateRequests(initial,parsed.teacher,parsed.requests);
 
@@ -307,34 +308,44 @@ function startSchedule(){
   p1.classList.remove("bad"); p2.classList.remove("bad");
   try{
     const parsed=parseInput(document.getElementById("input").value);
-    const sols=solveAll(parsed,2);
+    const sols=solveAll(parsed,4);
     currentSolutions=sols;
     if(sols.length===0){
       p1.textContent="不可调";
       p2.textContent="不可调";
+      document.getElementById("p3").textContent="不可调";
+      document.getElementById("p4").textContent="不可调";
       p1.classList.add("bad"); p2.classList.add("bad");
+      document.getElementById("p3").classList.add("bad");
+      document.getElementById("p4").classList.add("bad");
       selectedPlan=0;
       document.getElementById("c1").checked=false;
       document.getElementById("c2").checked=false;
-      document.getElementById("status").textContent="在“最多3位被调课老师”的当前规则内未找到可行方案。";
-      return;
+      document.getElementById("c3").checked=false;
+      document.getElementById("c4").checked=false;
+return;
     }
     p1.textContent=solutionText(sols[0]);
     p2.textContent=sols[1]?solutionText(sols[1]):"暂无第二方案";
+    document.getElementById("p3").textContent=sols[2]?solutionText(sols[2]):"暂无第三方案";
+    document.getElementById("p4").textContent=sols[3]?solutionText(sols[3]):"暂无第四方案";
     selectedPlan=1;
     document.getElementById("c1").checked=true;
     document.getElementById("c2").checked=false;
-    document.getElementById("status").textContent=
-      `已按总课表0910计算；本次输入共${parsed.requests.length}个课表单元格。方案一已默认选择。`;
-  }catch(e){
+    document.getElementById("c3").checked=false;
+    document.getElementById("c4").checked=false;
+}catch(e){
     currentSolutions=[];
     selectedPlan=0;
     p1.textContent=e.message; p2.textContent="";
+    document.getElementById("p3").textContent="";
+    document.getElementById("p4").textContent="";
     p1.classList.add("bad");
     document.getElementById("c1").checked=false;
     document.getElementById("c2").checked=false;
-    document.getElementById("status").textContent="";
-  }
+    document.getElementById("c3").checked=false;
+    document.getElementById("c4").checked=false;
+}
 }
 
 function choosePlan(n){
@@ -345,18 +356,25 @@ function choosePlan(n){
   selectedPlan=n;
   document.getElementById("c1").checked=n===1;
   document.getElementById("c2").checked=n===2;
+  document.getElementById("c3").checked=n===3;
+  document.getElementById("c4").checked=n===4;
 }
 
 function clearAll(){
   document.getElementById("input").value="";
   document.getElementById("p1").textContent="";
   document.getElementById("p2").textContent="";
+  document.getElementById("p3").textContent="";
+  document.getElementById("p4").textContent="";
   document.getElementById("p1").classList.remove("bad");
   document.getElementById("p2").classList.remove("bad");
-  document.getElementById("status").textContent="";
-  currentSolutions=[];selectedPlan=0;
+  document.getElementById("p3").classList.remove("bad");
+  document.getElementById("p4").classList.remove("bad");
+currentSolutions=[];selectedPlan=0;
   document.getElementById("c1").checked=false;
   document.getElementById("c2").checked=false;
+  document.getElementById("c3").checked=false;
+  document.getElementById("c4").checked=false;
   window.scrollTo({top:0,behavior:"smooth"});
 }
 
