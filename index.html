@@ -28,7 +28,7 @@ body{min-height:100vh}
 .tablewrap{overflow:auto;padding:8px;transform-origin:top left}
 table{border-collapse:collapse;font-size:11px;min-width:1600px}
 th,td{border:1px solid #777;padding:4px;vertical-align:top;min-width:78px;white-space:pre-wrap}
-th{background:#eef3fb;position:sticky;top:63px}
+th{background:#eef3fb}
 td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px}
 #status{font-size:12px;color:#475467;margin-top:5px;min-height:17px}
 @media (min-width:700px){
@@ -48,11 +48,11 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
 
   <div id="plans"></div>
 <div class="bottom">
+    <button class="blue" onclick="printForm()">生成调课单</button>
     <button class="blue" onclick="downloadNewTable()">生成新课表</button>
-    <button class="blue" onclick="printForm()">打印调课单</button>
     <button class="blue" onclick="clearAll()">清屏</button>
   </div>
-<div class="footer">沙河教务 V260910-7</div>
+<div class="footer">沙河教务 V260910-8</div>
 </div>
 
 <div id="browser">
@@ -68,8 +68,10 @@ const ACTIVE_SLOTS = DATA.slots;
 const FORBIDDEN = new Set(["一56","五56"]);
 let currentSolutions = [];
 let selectedPlan = 0;
+let workingState = null;
 
 function deepClone(x){ return JSON.parse(JSON.stringify(x)); }
+workingState = deepClone(DATA.cells);
 function cellKey(ci,slot){ return ci+"|"+slot; }
 
 function normalizeTeacher(t){ return (t||"").trim(); }
@@ -252,7 +254,7 @@ function findSingleSolutions(baseState, req){
 }
 
 function solveAll(parsed){
-  const initial=deepClone(DATA.cells);
+  const initial=deepClone(workingState);
   const located=locateRequests(initial,parsed.teacher,parsed.requests);
 
   // 顺序处理最多3个申请时段，每次在上一次生成的新课表基础上继续
@@ -389,23 +391,36 @@ function downloadNewTable(){
     alert("Excel组件未加载，请联网后再试。");
     return;
   }
+
+  // 将本次勾选方案提交到本次调课工作的临时课表。
+  // 下一次调课自动在这张新表基础上继续计算。
+  const sol=currentSolutions[selectedPlan-1];
+  workingState=deepClone(sol.state);
+
   const bytes=b64ToUint8(ORIGINAL_XLSX_B64);
   const wb=XLSX.read(bytes,{type:"array",cellStyles:true});
   const ws=wb.Sheets["2-11周课表 (2)"];
-  const sol=currentSolutions[selectedPlan-1];
 
-  // 根据最终state，把13个有效时段、19个班级写回原表对应单元格
+  // 始终以原0910版式为模板，把本次会话累计后的“最后新课表”写入
   for(const slot of ACTIVE_SLOTS){
-    const row=DATA.slotToRow[slot]+1; // JS数据行号为0起源于Excel行索引? 这里DATA存的是inspect 0-based，对应Excel行=+1
+    const row=DATA.slotToRow[slot]+1;
     for(let ci=0;ci<DATA.classes.length;ci++){
-      const colIndex=DATA.classes[ci].col; // 0-based
+      const colIndex=DATA.classes[ci].col;
       const addr=XLSX.utils.encode_cell({r:row-1,c:colIndex});
       if(!ws[addr]) ws[addr]={t:"s",v:""};
-      ws[addr].v=sol.state[slot][ci].raw||"";
+      ws[addr].v=workingState[slot][ci].raw||"";
       ws[addr].t="s";
     }
   }
-  XLSX.writeFile(wb,`调课新表_基于0910_${new Date().toISOString().slice(0,10)}.xlsx`);
+
+  XLSX.writeFile(wb,`调课新表_累计最终版_${new Date().toISOString().slice(0,10)}.xlsx`);
+
+  // 清当前申请，保留累计课表，直接准备下一次调课
+  document.getElementById("input").value="";
+  document.getElementById("plans").innerHTML="";
+  currentSolutions=[];
+  selectedPlan=0;
+  window.scrollTo({top:0,behavior:"smooth"});
 }
 
 function esc(s){return String(s??"").replace(/[&<>\"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));}
@@ -462,7 +477,35 @@ function printForm(){
   });
 
   const doc=`<!doctype html><html><head><meta charset="utf-8"><title>调课单</title><style>
-  @page{size:A4;margin:18mm 20mm}body{font-family:"SimSun","Microsoft YaHei",serif;color:#000;font-size:13px;margin:0}.sheet{max-width:690px;margin:auto}h3{text-align:center;margin:3px 0 10px;font-size:17px}h2{text-align:center;letter-spacing:8px;margin:8px 0 16px;font-size:22px}p{margin:5px 6px}.meta{display:flex;justify-content:space-between}.fill{color:#000}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:4px 3px;text-align:center;vertical-align:middle;height:34px;font-size:12px}.label{width:13%}.approval td{height:45px}.sign{text-align:right;margin-top:14px}.notice{margin-top:8px}.notice table th,.notice table td{height:31px}.pagebreak{page-break-before:always}@media print{button{display:none}.pagebreak{page-break-before:always}}</style></head><body><div class="sheet"><section><h3>北京市工贸技师学院</h3><h2>课 程 变 动 申 请 单</h2><div class="meta"><span>编号：GMXY-QR/7.5-25</span><span>版号：C/0</span></div><table><tr><td class="label">申请调课<br>教师姓名</td><td colspan="2" class="fill">${esc(applicant)}</td><td class="label">调课<br>理由</td><td colspan="3"></td></tr><tr><td class="label">要求调课<br>班级</td><td colspan="2" class="fill">${esc([...new Set(appClass)].join('、'))}</td><td class="label">调课<br>课程</td><td class="fill">${esc([...new Set(appCourse)].join('、'))}</td><td>要与何教师何课程调课</td><td class="fill">${esc([...new Set(partners)].join('；'))}</td></tr>${rows}<tr class="approval"><td>教研室<br>意见</td><td colspan="2"></td><td>教务科<br>意见</td><td colspan="3"></td></tr></table><p class="sign">填单日期：　　年　 月　 日</p></section>${noticeHtml||'<p>本方案没有需要单独通知的被调课教师。</p>'}<p style="text-align:center;margin-top:16px"><button onclick="window.print()">打印 / 保存PDF</button></p></div></body></html>`;
+  @page{size:A4;margin:18mm 20mm}body{font-family:"SimSun","Microsoft YaHei",serif;color:#000;font-size:13px;margin:0;padding-bottom:86px}.sheet{max-width:690px;margin:auto}.previewTools{position:sticky;bottom:0;z-index:50;display:flex;gap:12px;justify-content:center;background:rgba(255,255,255,.97);padding:12px 10px 16px;border-top:1px solid #d0d5dd}.previewTools button{width:44%;height:52px;border:0;border-radius:9px;background:#16468d;color:#fff;font-size:20px;font-weight:700;box-shadow:0 2px 7px rgba(0,0,0,.16)}h3{text-align:center;margin:3px 0 10px;font-size:17px}h2{text-align:center;letter-spacing:8px;margin:8px 0 16px;font-size:22px}p{margin:5px 6px}.meta{display:flex;justify-content:space-between}.fill{color:#000}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:4px 3px;text-align:center;vertical-align:middle;height:34px;font-size:12px}.label{width:13%}.approval td{height:45px}.sign{text-align:right;margin-top:14px}.notice{margin-top:8px}.notice table th,.notice table td{height:31px}.pagebreak{page-break-before:always}@media print{.previewTools{display:none!important}button{display:none}body{padding-bottom:0}.pagebreak{page-break-before:always}}</style></head><body><div class="sheet"><section><h3>北京市工贸技师学院</h3><h2>课 程 变 动 申 请 单</h2><div class="meta"><span>编号：GMXY-QR/7.5-25</span><span>版号：C/0</span></div><table><tr><td class="label">申请调课<br>教师姓名</td><td colspan="2" class="fill">${esc(applicant)}</td><td class="label">调课<br>理由</td><td colspan="3"></td></tr><tr><td class="label">要求调课<br>班级</td><td colspan="2" class="fill">${esc([...new Set(appClass)].join('、'))}</td><td class="label">调课<br>课程</td><td class="fill">${esc([...new Set(appCourse)].join('、'))}</td><td>要与何教师何课程调课</td><td class="fill">${esc([...new Set(partners)].join('；'))}</td></tr>${rows}<tr class="approval"><td>教研室<br>意见</td><td colspan="2"></td><td>教务科<br>意见</td><td colspan="3"></td></tr></table><p class="sign">填单日期：　　年　 月　 日</p></section>${noticeHtml||'<p>本方案没有需要单独通知的被调课教师。</p>'}</div>
+<div class="previewTools">
+<button onclick="shareScheduleForm()">分享调课单</button>
+<button onclick="window.print()">打印 / 保存PDF</button>
+</div>
+<script>
+async function shareScheduleForm(){
+  try{
+    var copy=document.documentElement.cloneNode(true);
+    var tools=copy.querySelector(".previewTools");
+    if(tools) tools.remove();
+    var content="<!doctype html>"+copy.outerHTML;
+    var blob=new Blob([content],{type:"text/html"});
+    var file=new File([blob],"调课单.html",{type:"text/html"});
+    if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({title:"调课单",files:[file]});
+    }else if(navigator.share){
+      await navigator.share({title:"调课单",text:"调课单"});
+    }else{
+      alert("当前浏览器不支持直接分享，请先点击“打印 / 保存PDF”，保存后再从手机文件中分享。");
+    }
+  }catch(e){
+    if(!e || e.name!=="AbortError"){
+      alert("直接分享未成功，请先点击“打印 / 保存PDF”，保存后再分享。");
+    }
+  }
+}
+<\/script>
+</body></html>`;
   const w=window.open("","_blank");
   if(!w){alert("浏览器阻止了弹窗，请允许弹窗后再试");return;}
   w.document.open(); w.document.write(doc); w.document.close();
