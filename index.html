@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes">
+<title>调课小程序</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;background:#f5f7fb;font-family:-apple-system,BlinkMacSystemFont,"Microsoft YaHei",Arial,sans-serif;color:#18202a}
+body{min-height:100vh}
+#main{padding:0 9px 10px}
+.header{margin:0 -9px 7px;background:#16468d;color:#fff;text-align:center;font-weight:700;font-size:21px;padding:8px 4px}
+.tip{font-size:13px;line-height:19px;text-align:center;margin:5px 1px;color:#333}
+#input{display:block;width:100%;height:39px;border:1px solid #8c96a5;border-radius:7px;background:#fff;font-size:18px;padding:5px 9px}
+.actionrow,.bottom{display:flex;gap:8px;margin-top:7px}
+.blue{flex:1;border:0;border-radius:7px;background:#16468d;color:#fff;font-size:16px;font-weight:600;height:39px}
+.planhead{display:flex;align-items:center;justify-content:space-between;margin:8px 1px 4px;font-size:16px;font-weight:700}
+.pick{display:flex;align-items:center;gap:4px;font-weight:500;font-size:14px}
+.pick input{width:22px;height:22px;accent-color:#16468d}
+.output{width:100%;min-height:84px;border:1px solid #8c96a5;border-radius:7px;background:#fff;padding:8px;font-size:16px;line-height:23px;white-space:pre-wrap;overflow-wrap:anywhere}
+.output.bad{color:#b42318}
+.note{font-size:12px;color:#667085;margin:6px 1px 0;line-height:17px}
+.footer{text-align:center;color:#667085;font-size:12px;margin-top:7px}
+#browser{display:none;position:fixed;inset:0;background:#fff;z-index:99;overflow:auto;-webkit-overflow-scrolling:touch}
+.browserbar{position:sticky;top:0;z-index:3;background:#16468d;color:#fff;padding:8px;text-align:center;font-weight:700}
+.browserhint{position:sticky;top:37px;z-index:2;background:#edf3ff;color:#344054;text-align:center;font-size:12px;padding:5px}
+.tablewrap{overflow:auto;padding:8px;transform-origin:top left}
+table{border-collapse:collapse;font-size:11px;min-width:1600px}
+th,td{border:1px solid #777;padding:4px;vertical-align:top;min-width:78px;white-space:pre-wrap}
+th{background:#eef3fb;position:sticky;top:63px}
+td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px}
+#status{font-size:12px;color:#475467;margin-top:5px;min-height:17px}
+@media (min-width:700px){
+ #main{max-width:720px;margin:auto}
+ .output{min-height:94px}
+}
+</style>
+</head>
+<body>
+<div id="main">
+  <div class="header">调课小程序</div>
+  <div class="tip">请输入星期 节次（可连续或节选例如123456或1256） 申请人姓名<br>也支持跨天，如：二12、三34杨鸿</div>
+  <input id="input" placeholder="例如：二12杨鸿 / 二1234杨鸿 / 二12、三34杨鸿">
+  <div class="actionrow">
+    <button class="blue" onclick="startSchedule()">开始调课</button>
+    <button class="blue" onclick="openBrowser()">课表浏览</button>
+  </div>
+
+  <div class="planhead"><span>方案一</span><label class="pick">是否选择 <input id="c1" type="checkbox" onclick="choosePlan(1)"></label></div>
+  <div id="p1" class="output"></div>
+
+  <div class="planhead"><span>方案二</span><label class="pick">是否选择 <input id="c2" type="checkbox" onclick="choosePlan(2)"></label></div>
+  <div id="p2" class="output"></div>
+
+  <div id="status"></div>
+
+  <div class="bottom">
+    <button class="blue" onclick="downloadNewTable()">生成新课表</button>
+    <button class="blue" onclick="printForm()">打印调课单</button>
+    <button class="blue" onclick="clearAll()">清屏</button>
+  </div>
+  <div class="note">测试算法：优先直接对调；撞课时自动寻找协助老师。最多允许3位被调课老师参与；周一56、周五56固定不参与调课。</div>
+  <div class="footer">沙河教务 V260910-4</div>
+</div>
+
+<div id="browser">
+  <div class="browserbar">总课表0910 · 课表浏览</div>
+  <div class="browserhint">可双指放大缩小、左右滑动；点击这里返回调课界面</div>
+  <div class="tablewrap" id="tablewrap"></div>
+</div>
+
+<script>
+const DATA = {"classes": [{"col": 2, "excelCol": "C", "full": "25级网信安全中级1班(第3学期)刘运琦", "className": "25级网信安全中级1班", "head": "刘运琦", "label": "刘运琦班"}, {"col": 3, "excelCol": "D", "full": "24级商务中级1班(第5学期)徐邦仪", "className": "24级商务中级1班", "head": "徐邦仪", "label": "徐邦仪班"}, {"col": 4, "excelCol": "E", "full": "26级网络中级1班(第1学期)刘晟典", "className": "26级网络中级1班", "head": "刘晟典", "label": "刘晟典班"}, {"col": 5, "excelCol": "F", "full": "26级电子商务中级1班(第1学期)李昀倩", "className": "26级电子商务中级1班", "head": "李昀倩", "label": "李昀倩班"}, {"col": 6, "excelCol": "G", "full": "26级网信安全中级1班(第1学期)刘天一", "className": "26级网信安全中级1班", "head": "刘天一", "label": "刘天一班"}, {"col": 7, "excelCol": "H", "full": "25级制冷中级1班(第3学期)邢方凯", "className": "25级制冷中级1班", "head": "邢方凯", "label": "邢方凯班"}, {"col": 8, "excelCol": "I", "full": "25级轨道交通中级1班(第3学期)常锋", "className": "25级轨道交通中级1班", "head": "常锋", "label": "常锋班"}, {"col": 9, "excelCol": "J", "full": "25级电子商务中级1班(第3学期)高伟", "className": "25级电子商务中级1班", "head": "高伟", "label": "高伟班"}, {"col": 10, "excelCol": "K", "full": "24级网信安全中级1班(第5学期)程露", "className": "24级网信安全中级1班", "head": "程露", "label": "程露班"}, {"col": 11, "excelCol": "L", "full": "25级制冷中级2班(第3学期)朱彩兰", "className": "25级制冷中级2班", "head": "朱彩兰", "label": "朱彩兰班"}, {"col": 12, "excelCol": "M", "full": "24级轨道中级1班(第5学期)赵峰", "className": "24级轨道中级1班", "head": "赵峰", "label": "赵峰班"}, {"col": 13, "excelCol": "N", "full": "24级制冷中级1班(第5学期)王帅", "className": "24级制冷中级1班", "head": "王帅", "label": "王帅班"}, {"col": 14, "excelCol": "O", "full": "24级轨道中级2班(第5学期)胡雪静", "className": "24级轨道中级2班", "head": "胡雪静", "label": "胡雪静班"}, {"col": 15, "excelCol": "P", "full": "26级轨道交通中级1班(第1学期)柳德攀", "className": "26级轨道交通中级1班", "head": "柳德攀", "label": "柳德攀班"}, {"col": 16, "excelCol": "Q", "full": "26级制冷中级1班(第1学期)张梓煜", "className": "26级制冷中级1班", "head": "张梓煜", "label": "张梓煜班"}, {"col": 17, "excelCol": "R", "full": "26级制冷中级2班(第1学期)阮宸宇", "className": "26级制冷中级2班", "head": "阮宸宇", "label": "阮宸宇班"}, {"col": 18, "excelCol": "S", "full": "25级网络中级1班(第3学期)周静", "className": "25级网络中级1班", "head": "周静", "label": "周静班"}, {"col": 19, "excelCol": "T", "full": "26级制冷预师1班(第7学期)王晓丽", "className": "26级制冷预师1班", "head": "王晓丽", "label": "王晓丽班"}, {"col": 20, "excelCol": "U", "full": "25级制冷预师1班(第9学期)顾小颜", "className": "25级制冷预师1班", "head": "顾小颜", "label": "顾小颜班"}], "slots": ["一12", "一34", "二12", "二34", "二56", "三12", "三34", "三56", "四12", "四34", "四56", "五12", "五34"], "slotToRow": {"一12": 5, "一34": 6, "二12": 7, "二34": 8, "二56": 9, "三12": 10, "三34": 11, "三56": 12, "四12": 13, "四34": 14, "四56": 15, "五12": 16, "五34": 17}, "cells": {"一12": [{"raw": "网络安全产品安全与调试\n（刘晟典）H2", "teacher": "刘晟典", "course": "网络安全产品安全与调试", "classIndex": 0}, {"raw": "初级会计学\n(李昀倩)", "teacher": "李昀倩", "course": "初级会计学", "classIndex": 1}, {"raw": "电工电子技术基础\n(于向东)", "teacher": "于向东", "course": "电工电子技术基础", "classIndex": 2}, {"raw": "网络技术基础\n（高伟）", "teacher": "高伟", "course": "网络技术基础", "classIndex": 3}, {"raw": "通用职业素质\n(王晓丽)", "teacher": "王晓丽", "course": "通用职业素质", "classIndex": 4}, {"raw": "★制冷系统安装与调试(顾小颜)制冷综合实训室", "teacher": "顾小颜", "course": "★制冷系统安装与调试", "classIndex": 5}, {"raw": "城市轨道交通车站设备运行(常锋)轨道交通实训室二", "teacher": "常锋", "course": "城市轨道交通车站设备运行", "classIndex": 6}, {"raw": "电子商务网页图像制作\n（洪轩）D3", "teacher": "洪轩", "course": "电子商务网页图像制作", "classIndex": 7}, {"raw": "英语\n(张军霞)", "teacher": "张军霞", "course": "英语", "classIndex": 8}, {"raw": "语文\n(徐倩)", "teacher": "徐倩", "course": "语文", "classIndex": 9}, {"raw": "语文\n(耿红梅)", "teacher": "耿红梅", "course": "语文", "classIndex": 10}, {"raw": "数学\n(杨鸿)", "teacher": "杨鸿", "course": "数学", "classIndex": 11}, {"raw": "城市轨道交通站行车组织(胡雪静)轨道交通实训室一", "teacher": "胡雪静", "course": "城市轨道交通站行车组织", "classIndex": 12}, {"raw": "数字技术应用\n(秦楠)D2", "teacher": "秦楠", "course": "数字技术应用", "classIndex": 13}, {"raw": "历史\n(柳德攀)", "teacher": "柳德攀", "course": "历史", "classIndex": 14}, {"raw": "机械制图\n(邓建军)", "teacher": "邓建军", "course": "机械制图", "classIndex": 15}, {"raw": "★小型网络安装与调试\n(李晓菲)J1", "teacher": "李晓菲", "course": "★小型网络安装与调试", "classIndex": 16}, {"raw": "●制冷系统维护与保养\n(李晶)焊接实训室", "teacher": "李晶", "course": "●制冷系统维护与保养", "classIndex": 17}, {"raw": "中央空调系统运行管理(阮宸宇)中央空调实训室", "teacher": "阮宸宇", "course": "中央空调系统运行管理", "classIndex": 18}], "一34": [{"raw": "网络安全产品安全与调试\n（刘晟典）H2", "teacher": "刘晟典", "course": "网络安全产品安全与调试", "classIndex": 0}, {"raw": "思想政治\n(程露)", "teacher": "程露", "course": "思想政治", "classIndex": 1}, {"raw": "数学\n(杨鸿)", "teacher": "杨鸿", "course": "数学", "classIndex": 2}, {"raw": "通用职业素质\n(王晓丽)", "teacher": "王晓丽", "course": "通用职业素质", "classIndex": 3}, {"raw": "英语\n(秦楠)", "teacher": "秦楠", "course": "英语", "classIndex": 4}, {"raw": "★制冷系统安装与调试(顾小颜)制冷综合实训室", "teacher": "顾小颜", "course": "★制冷系统安装与调试", "classIndex": 5}, {"raw": "城市轨道交通车站设备运行(常锋)轨道交通实训室二", "teacher": "常锋", "course": "城市轨道交通车站设备运行", "classIndex": 6}, {"raw": "电子商务网页图像制作\n（洪轩）D3", "teacher": "洪轩", "course": "电子商务网页图像制作", "classIndex": 7}, {"raw": "数学\n(冯彦)", "teacher": "冯彦", "course": "数学", "classIndex": 8}, {"raw": "电工基础\n(于向东)", "teacher": "于向东", "course": "电工基础", "classIndex": 9}, {"raw": "英语\n(张军霞)", "teacher": "张军霞", "course": "英语", "classIndex": 10}, {"raw": "语文\n(耿红梅)", "teacher": "耿红梅", "course": "语文", "classIndex": 11}, {"raw": "城市轨道交通站行车组织(胡雪静)轨道交通实训室一", "teacher": "胡雪静", "course": "城市轨道交通站行车组织", "classIndex": 12}, {"raw": "通用职业素质\n(李昀倩)", "teacher": "李昀倩", "course": "通用职业素质", "classIndex": 13}, {"raw": "机械制图\n(邓建军)", "teacher": "邓建军", "course": "机械制图", "classIndex": 14}, {"raw": "思想政治\n(易强文)", "teacher": "易强文", "course": "思想政治", "classIndex": 15}, {"raw": "★小型网络安装与调试\n(李晓菲)J1", "teacher": "李晓菲", "course": "★小型网络安装与调试", "classIndex": 16}, {"raw": "●制冷系统维护与保养\n(李晶)焊接实训室", "teacher": "李晶", "course": "●制冷系统维护与保养", "classIndex": 17}, {"raw": "中央空调系统运行管理(阮宸宇)中央空调实训室", "teacher": "阮宸宇", "course": "中央空调系统运行管理", "classIndex": 18}], "二12": [{"raw": "数据库技术应用\n（刘运琦)H4", "teacher": "刘运琦", "course": "数据库技术应用", "classIndex": 0}, {"raw": "电子商务安全与技术\n(周静)", "teacher": "周静", "course": "电子商务安全与技术", "classIndex": 1}, {"raw": "数字技术应用\n（李昀倩）D1", "teacher": "李昀倩", "course": "数字技术应用", "classIndex": 2}, {"raw": "历史\n（柳德攀）", "teacher": "柳德攀", "course": "历史", "classIndex": 3}, {"raw": "数学\n(杨鸿)", "teacher": "杨鸿", "course": "数学", "classIndex": 4}, {"raw": "★制冷系统安装与调试(顾小颜)制冷综合实训室", "teacher": "顾小颜", "course": "★制冷系统安装与调试", "classIndex": 5}, {"raw": "城市轨道交通车站设备运行(常锋)轨道交通实训室二", "teacher": "常锋", "course": "城市轨道交通车站设备运行", "classIndex": 6}, {"raw": "★客户服务\n(徐邦仪)D3", "teacher": "徐邦仪", "course": "★客户服务", "classIndex": 7}, {"raw": "基于等保的信息系统安全配置\n(刘天一)H2", "teacher": "刘天一", "course": "基于等保的信息系统安全配置", "classIndex": 8}, {"raw": "思想政治\n(程露)", "teacher": "程露", "course": "思想政治", "classIndex": 9}, {"raw": "数学\n(张军霞)", "teacher": "张军霞", "course": "数学", "classIndex": 10}, {"raw": "★制冷设备运行与巡检(朱彩兰)中央空调实训室", "teacher": "朱彩兰", "course": "★制冷设备运行与巡检", "classIndex": 11}, {"raw": "城市轨道交通站行车组织(胡雪静)轨道交通实训室一", "teacher": "胡雪静", "course": "城市轨道交通站行车组织", "classIndex": 12}, {"raw": "语文\n(耿红梅)", "teacher": "耿红梅", "course": "语文", "classIndex": 13}, {"raw": "英语\n(秦楠)", "teacher": "秦楠", "course": "英语", "classIndex": 14}, {"raw": "语文\n(徐倩)", "teacher": "徐倩", "course": "语文", "classIndex": 15}, {"raw": "图形图像处理\n(赵丰)J1", "teacher": "赵丰", "course": "图形图像处理", "classIndex": 16}, {"raw": "●中小型制冷设备故障检测与维修(张梓煜)焊接实训室", "teacher": "张梓煜", "course": "●中小型制冷设备故障检测与维修", "classIndex": 17}, {"raw": "暖通空调节能技术(王欢欢)暖通综合实训室", "teacher": "王欢欢", "course": "暖通空调节能技术", "classIndex": 18}], "二34": [{"raw": "数据库技术应用\n（刘运琦)H4", "teacher": "刘运琦", "course": "数据库技术应用", "classIndex": 0}, {"raw": "数学\n(冯彦)", "teacher": "冯彦", "course": "数学", "classIndex": 1}, {"raw": "语文\n（耿红梅）", "teacher": "耿红梅", "course": "语文", "classIndex": 2}, {"raw": "数学\n(杨鸿)", "teacher": "杨鸿", "course": "数学", "classIndex": 3}, {"raw": "体育与健康\n(邢方凯)", "teacher": "邢方凯", "course": "体育与健康", "classIndex": 4}, {"raw": "★制冷系统安装与调试(顾小颜)制冷综合实训室", "teacher": "顾小颜", "course": "★制冷系统安装与调试", "classIndex": 5}, {"raw": "城市轨道交通车站设备运行(常锋)轨道交通实训室二", "teacher": "常锋", "course": "城市轨道交通车站设备运行", "classIndex": 6}, {"raw": "★客户服务\n(徐邦仪)D3", "teacher": "徐邦仪", "course": "★客户服务", "classIndex": 7}, {"raw": "基于等保的信息系统安全配置\n(刘天一)H2", "teacher": "刘天一", "course": "基于等保的信息系统安全配置", "classIndex": 8}, {"raw": "体育与健康\n(王晓丽)", "teacher": "王晓丽", "course": "体育与健康", "classIndex": 9}, {"raw": "思想政治\n(程露)", "teacher": "程露", "course": "思想政治", "classIndex": 10}, {"raw": "★制冷设备运行与巡检(朱彩兰)中央空调实训室", "teacher": "朱彩兰", "course": "★制冷设备运行与巡检", "classIndex": 11}, {"raw": "城市轨道交通站行车组织(胡雪静)轨道交通实训室一", "teacher": "胡雪静", "course": "城市轨道交通站行车组织", "classIndex": 12}, {"raw": "思想政治\n(易强文)", "teacher": "易强文", "course": "思想政治", "classIndex": 13}, {"raw": "语文\n(徐倩)", "teacher": "徐倩", "course": "语文", "classIndex": 14}, {"raw": "历史\n(柳德攀)", "teacher": "柳德攀", "course": "历史", "classIndex": 15}, {"raw": "图形图像处理\n(赵丰)J1", "teacher": "赵丰", "course": "图形图像处理", "classIndex": 16}, {"raw": "●中小型制冷设备故障检测与维修(张梓煜)焊接实训室", "teacher": "张梓煜", "course": "●中小型制冷设备故障检测与维修", "classIndex": 17}, {"raw": "暖通空调节能技术(王欢欢)暖通综合实训室", "teacher": "王欢欢", "course": "暖通空调节能技术", "classIndex": 18}], "二56": [{"raw": "体育与健康\n(王晓丽)", "teacher": "王晓丽", "course": "体育与健康", "classIndex": 0}, {"raw": "管理学\n(周静)", "teacher": "周静", "course": "管理学", "classIndex": 1}, {"raw": "电工电子技术基础\n(于向东)", "teacher": "于向东", "course": "电工电子技术基础", "classIndex": 2}, {"raw": "思想政治\n(易强文)", "teacher": "易强文", "course": "思想政治", "classIndex": 3}, {"raw": "数字技术应用\n（李昀倩）J2", "teacher": "李昀倩", "course": "数字技术应用", "classIndex": 4}, {"raw": "★制冷系统安装与调试(顾小颜)制冷综合实训室", "teacher": "顾小颜", "course": "★制冷系统安装与调试", "classIndex": 5}, {"raw": "城市轨道交通车站设备运行(常锋)轨道交通实训室二", "teacher": "常锋", "course": "城市轨道交通车站设备运行", "classIndex": 6}, {"raw": "★客户服务\n(徐邦仪)D3", "teacher": "徐邦仪", "course": "★客户服务", "classIndex": 7}, {"raw": "基于等保的信息系统安全配置\n(刘天一)H2", "teacher": "刘天一", "course": "基于等保的信息系统安全配置", "classIndex": 8}, {"raw": "机械基础\n(李晶)", "teacher": "李晶", "course": "机械基础", "classIndex": 9}, {"raw": "城市轨道交通站行车组织(赵峰)221", "teacher": "赵峰", "course": "城市轨道交通站行车组织", "classIndex": 10}, {"raw": "★制冷设备运行与巡检(朱彩兰)中央空调实训室", "teacher": "朱彩兰", "course": "★制冷设备运行与巡检", "classIndex": 11}, {"raw": "城市轨道交通站行车组织(胡雪静)轨道交通实训室一", "teacher": "胡雪静", "course": "城市轨道交通站行车组织", "classIndex": 12}, {"raw": "城市轨道交通概论\n(邢建姝)", "teacher": "邢建姝", "course": "城市轨道交通概论", "classIndex": 13}, {"raw": "数字技术应用\n(冯彦)H4", "teacher": "冯彦", "course": "数字技术应用", "classIndex": 14}, {"raw": "制冷技术基础\n(王帅)", "teacher": "王帅", "course": "制冷技术基础", "classIndex": 15}, {"raw": "思想政治\n(高伟)J1", "teacher": "高伟", "course": "思想政治", "classIndex": 16}, {"raw": "体育与健康\n(邢方凯)", "teacher": "邢方凯", "course": "体育与健康", "classIndex": 17}, {"raw": "暖通空调节能技术(王欢欢)暖通综合实训室", "teacher": "王欢欢", "course": "暖通空调节能技术", "classIndex": 18}], "三12": [{"raw": "计算机网络系统搭建\n（刘运琦)J2", "teacher": "刘运琦", "course": "计算机网络系统搭建", "classIndex": 0}, {"raw": "★网店推广\n(洪轩)D1", "teacher": "洪轩", "course": "★网店推广", "classIndex": 1}, {"raw": "通用职业素质\n(王晓丽)", "teacher": "王晓丽", "course": "通用职业素质", "classIndex": 2}, {"raw": "语文\n（徐倩)", "teacher": "徐倩", "course": "语文", "classIndex": 3}, {"raw": "历史\n（柳德攀）", "teacher": "柳德攀", "course": "历史", "classIndex": 4}, {"raw": "电工基础\n(于向东)", "teacher": "于向东", "course": "电工基础", "classIndex": 5}, {"raw": "城市轨道交通车站设备运行(常锋)轨道交通实训室二", "teacher": "常锋", "course": "城市轨道交通车站设备运行", "classIndex": 6}, {"raw": "电子商务安全技术\n(秦楠)", "teacher": "秦楠", "course": "电子商务安全技术", "classIndex": 7}, {"raw": "网络安全产品安装与调试\n(刘天一)H2", "teacher": "刘天一", "course": "网络安全产品安装与调试", "classIndex": 8}, {"raw": "★制冷系统安装与调试(王帅)制冷综合实训室", "teacher": "王帅", "course": "★制冷系统安装与调试", "classIndex": 9}, {"raw": "城市轨道交通站行车组织(赵峰)221", "teacher": "赵峰", "course": "城市轨道交通站行车组织", "classIndex": 10}, {"raw": "电工基础\n(阮宸宇)", "teacher": "阮宸宇", "course": "电工基础", "classIndex": 11}, {"raw": "城市轨道交通站行车组织(胡雪静)轨道交通实训室一", "teacher": "胡雪静", "course": "城市轨道交通站行车组织", "classIndex": 12}, {"raw": "城市轨道交通站务工作组织\n(邢建姝)", "teacher": "邢建姝", "course": "城市轨道交通站务工作组织", "classIndex": 13}, {"raw": "数学\n(杨鸿)", "teacher": "杨鸿", "course": "数学", "classIndex": 14}, {"raw": "安全生产技术知识\n(贾宇鹏)", "teacher": "贾宇鹏", "course": "安全生产技术知识", "classIndex": 15}, {"raw": "常用工具软件\n(李晓菲)J1", "teacher": "李晓菲", "course": "常用工具软件", "classIndex": 16}, {"raw": "●中小型制冷设备故障检测与维修(张梓煜)焊接实训室", "teacher": "张梓煜", "course": "●中小型制冷设备故障检测与维修", "classIndex": 17}, {"raw": "空气调节\n(朱彩兰)中央空调实训室", "teacher": "朱彩兰", "course": "空气调节", "classIndex": 18}], "三34": [{"raw": "计算机网络系统搭建\n（刘运琦)J2", "teacher": "刘运琦", "course": "计算机网络系统搭建", "classIndex": 0}, {"raw": "★网店推广\n(洪轩)D1", "teacher": "洪轩", "course": "★网店推广", "classIndex": 1}, {"raw": "英语\n(秦楠)", "teacher": "秦楠", "course": "英语", "classIndex": 2}, {"raw": "体育与健康\n(邢方凯)", "teacher": "邢方凯", "course": "体育与健康", "classIndex": 3}, {"raw": "思想政治\n(易强文)", "teacher": "易强文", "course": "思想政治", "classIndex": 4}, {"raw": "制冷技术基础\n(顾小颜)", "teacher": "顾小颜", "course": "制冷技术基础", "classIndex": 5}, {"raw": "城市轨道交通车站设备运行(常锋)轨道交通实训室二", "teacher": "常锋", "course": "城市轨道交通车站设备运行", "classIndex": 6}, {"raw": "思想政治\n(高伟)", "teacher": "高伟", "course": "思想政治", "classIndex": 7}, {"raw": "网络安全产品安装与调试\n(刘天一)H2", "teacher": "刘天一", "course": "网络安全产品安装与调试", "classIndex": 8}, {"raw": "★制冷系统安装与调试(王帅)制冷综合实训室", "teacher": "王帅", "course": "★制冷系统安装与调试", "classIndex": 9}, {"raw": "城市轨道交通站行车组织(赵峰)221", "teacher": "赵峰", "course": "城市轨道交通站行车组织", "classIndex": 10}, {"raw": "思想政治\n(程露)", "teacher": "程露", "course": "思想政治", "classIndex": 11}, {"raw": "城市轨道交通站行车组织(胡雪静)223", "teacher": "胡雪静", "course": "城市轨道交通站行车组织", "classIndex": 12}, {"raw": "安全生产技术知识\n(邢建姝)", "teacher": "邢建姝", "course": "安全生产技术知识", "classIndex": 13}, {"raw": "通用职业素质\n(李昀倩)", "teacher": "李昀倩", "course": "通用职业素质", "classIndex": 14}, {"raw": "数学\n(杨鸿)", "teacher": "杨鸿", "course": "数学", "classIndex": 15}, {"raw": "常用工具软件\n(李晓菲)J1", "teacher": "李晓菲", "course": "常用工具软件", "classIndex": 16}, {"raw": "●中小型制冷设备故障检测与维修(张梓煜)焊接实训室", "teacher": "张梓煜", "course": "●中小型制冷设备故障检测与维修", "classIndex": 17}, {"raw": "中央空调系统运行管理(阮宸宇)中央空调实训室", "teacher": "阮宸宇", "course": "中央空调系统运行管理", "classIndex": 18}], "三56": [{"raw": "语文\n（徐倩)111", "teacher": "徐倩", "course": "语文", "classIndex": 0}, {"raw": "★网店推广\n(洪轩)D1", "teacher": "洪轩", "course": "★网店推广", "classIndex": 1}, {"raw": "思想政治\n(易强文)", "teacher": "易强文", "course": "思想政治", "classIndex": 2}, {"raw": "英语\n(张军霞)", "teacher": "张军霞", "course": "英语", "classIndex": 3}, {"raw": "语文\n（耿红梅）", "teacher": "耿红梅", "course": "语文", "classIndex": 4}, {"raw": "思想政治\n(高伟)", "teacher": "高伟", "course": "思想政治", "classIndex": 5}, {"raw": "城市轨道交通车站设备运行(常锋)轨道交通实训室二", "teacher": "常锋", "course": "城市轨道交通车站设备运行", "classIndex": 6}, {"raw": "体育与健康\n(王晓丽)", "teacher": "王晓丽", "course": "体育与健康", "classIndex": 7}, {"raw": "网络安全日常运维与监控\n(刘晟典)H2", "teacher": "刘晟典", "course": "网络安全日常运维与监控", "classIndex": 8}, {"raw": "机械基础\n(李晶)", "teacher": "李晶", "course": "机械基础", "classIndex": 9}, {"raw": "城市轨道交通站行车组织(赵峰)轨道交通实训室一", "teacher": "赵峰", "course": "城市轨道交通站行车组织", "classIndex": 10}, {"raw": "电子技术基础\n(于向东)", "teacher": "于向东", "course": "电子技术基础", "classIndex": 11}, {"raw": "城市轨道交通站行车组织(胡雪静)223", "teacher": "胡雪静", "course": "城市轨道交通站行车组织", "classIndex": 12}, {"raw": "历史\n(柳德攀)", "teacher": "柳德攀", "course": "历史", "classIndex": 13}, {"raw": "安全生产技术知识\n(贾宇鹏)", "teacher": "贾宇鹏", "course": "安全生产技术知识", "classIndex": 14}, {"raw": "体育与健康\n(邢方凯)", "teacher": "邢方凯", "course": "体育与健康", "classIndex": 15}, {"raw": "语文\n(徐倩)J1", "teacher": "徐倩", "course": "语文", "classIndex": 16}, {"raw": "●中小型制冷设备故障检测与维修(张梓煜)焊接实训室", "teacher": "张梓煜", "course": "●中小型制冷设备故障检测与维修", "classIndex": 17}, {"raw": "中央空调系统运行管理(阮宸宇)中央空调实训室", "teacher": "阮宸宇", "course": "中央空调系统运行管理", "classIndex": 18}], "四12": [{"raw": "网页设计与制作\n（刘运琦）D2", "teacher": "刘运琦", "course": "网页设计与制作", "classIndex": 0}, {"raw": "语文\n（耿红梅）", "teacher": "耿红梅", "course": "语文", "classIndex": 1}, {"raw": "★计算机设备组装与调试\n(冯彦)H4", "teacher": "冯彦", "course": "★计算机设备组装与调试", "classIndex": 2}, {"raw": "网络技术基础\n（高伟）D1", "teacher": "高伟", "course": "网络技术基础", "classIndex": 3}, {"raw": "计算机网络技术\n(刘天一)J2", "teacher": "刘天一", "course": "计算机网络技术", "classIndex": 4}, {"raw": "语文\n（徐倩)", "teacher": "徐倩", "course": "语文", "classIndex": 5}, {"raw": "城市轨道交通客运服务\n（邢建姝）", "teacher": "邢建姝", "course": "城市轨道交通客运服务", "classIndex": 6}, {"raw": "电子商务网页图像制作\n（洪轩）D3", "teacher": "洪轩", "course": "电子商务网页图像制作", "classIndex": 7}, {"raw": "网络安全日常运维与监控\n(刘晟典)H2", "teacher": "刘晟典", "course": "网络安全日常运维与监控", "classIndex": 8}, {"raw": "★制冷系统安装与调试(王帅)制冷综合实训室", "teacher": "王帅", "course": "★制冷系统安装与调试", "classIndex": 9}, {"raw": "城市轨道交通站行车组织(赵峰)轨道交通实训室一", "teacher": "赵峰", "course": "城市轨道交通站行车组织", "classIndex": 10}, {"raw": "★制冷设备运行与巡检(朱彩兰)中央空调实训室", "teacher": "朱彩兰", "course": "★制冷设备运行与巡检", "classIndex": 11}, {"raw": "数学\n(张军霞)", "teacher": "张军霞", "course": "数学", "classIndex": 12}, {"raw": "数学\n(杨鸿)", "teacher": "杨鸿", "course": "数学", "classIndex": 13}, {"raw": "物理\n(顾小颜)", "teacher": "顾小颜", "course": "物理", "classIndex": 14}, {"raw": "英语\n(秦楠)", "teacher": "秦楠", "course": "英语", "classIndex": 15}, {"raw": "网页设计与制作\n(赵丰)J1", "teacher": "赵丰", "course": "网页设计与制作", "classIndex": 16}, {"raw": "●制冷系统维护与保养\n(李晶)焊接实训室", "teacher": "李晶", "course": "●制冷系统维护与保养", "classIndex": 17}, {"raw": "暖通空调节能技术(王欢欢)暖通综合实训室", "teacher": "王欢欢", "course": "暖通空调节能技术", "classIndex": 18}], "四34": [{"raw": "网页设计与制作\n（刘运琦）D2", "teacher": "刘运琦", "course": "网页设计与制作", "classIndex": 0}, {"raw": "英语\n(张军霞)", "teacher": "张军霞", "course": "英语", "classIndex": 1}, {"raw": "★计算机设备组装与调试\n(冯彦)H4", "teacher": "冯彦", "course": "★计算机设备组装与调试", "classIndex": 2}, {"raw": "网络技术基础\n（高伟）D1", "teacher": "高伟", "course": "网络技术基础", "classIndex": 3}, {"raw": "计算机网络技术\n(刘天一)J2", "teacher": "刘天一", "course": "计算机网络技术", "classIndex": 4}, {"raw": "电工基础\n(于向东)", "teacher": "于向东", "course": "电工基础", "classIndex": 5}, {"raw": "体育与健康\n(王晓丽)", "teacher": "王晓丽", "course": "体育与健康", "classIndex": 6}, {"raw": "电子商务网页图像制作\n（洪轩）D3", "teacher": "洪轩", "course": "电子商务网页图像制作", "classIndex": 7}, {"raw": "网络安全日常运维与监控\n(刘晟典)H2", "teacher": "刘晟典", "course": "网络安全日常运维与监控", "classIndex": 8}, {"raw": "★制冷系统安装与调试(王帅)制冷综合实训室", "teacher": "王帅", "course": "★制冷系统安装与调试", "classIndex": 9}, {"raw": "城市轨道交通站行车组织(赵峰)轨道交通实训室一", "teacher": "赵峰", "course": "城市轨道交通站行车组织", "classIndex": 10}, {"raw": "★制冷设备运行与巡检(朱彩兰)中央空调实训室", "teacher": "朱彩兰", "course": "★制冷设备运行与巡检", "classIndex": 11}, {"raw": "思想政治\n(程露)", "teacher": "程露", "course": "思想政治", "classIndex": 12}, {"raw": "体育与健康\n(邢方凯)", "teacher": "邢方凯", "course": "体育与健康", "classIndex": 13}, {"raw": "思想政治\n(易强文)", "teacher": "易强文", "course": "思想政治", "classIndex": 14}, {"raw": "物理\n(顾小颜)", "teacher": "顾小颜", "course": "物理", "classIndex": 15}, {"raw": "网页设计与制作\n(赵丰)J1", "teacher": "赵丰", "course": "网页设计与制作", "classIndex": 16}, {"raw": "●制冷系统维护与保养\n(李晶)焊接实训室", "teacher": "李晶", "course": "●制冷系统维护与保养", "classIndex": 17}, {"raw": "暖通空调节能技术(王欢欢)暖通综合实训室", "teacher": "王欢欢", "course": "暖通空调节能技术", "classIndex": 18}], "四56": [{"raw": "思想政治\n(高伟)", "teacher": "高伟", "course": "思想政治", "classIndex": 0}, {"raw": "电子商务安全与技术\n(周静)", "teacher": "周静", "course": "电子商务安全与技术", "classIndex": 1}, {"raw": "★计算机设备组装与调试\n(冯彦)H4", "teacher": "冯彦", "course": "★计算机设备组装与调试", "classIndex": 2}, {"raw": "数字技术应用\n（李昀倩）D1", "teacher": "李昀倩", "course": "数字技术应用", "classIndex": 3}, {"raw": "计算机网络技术\n(刘天一)J2", "teacher": "刘天一", "course": "计算机网络技术", "classIndex": 4}, {"raw": "机械基础\n(张梓煜)", "teacher": "张梓煜", "course": "机械基础", "classIndex": 5}, {"raw": "语文\n（徐倩)", "teacher": "徐倩", "course": "语文", "classIndex": 6}, {"raw": "电子商务安全技术\n(秦楠)", "teacher": "秦楠", "course": "电子商务安全技术", "classIndex": 7}, {"raw": "网络安全日常运维与监控\n(刘晟典)H2", "teacher": "刘晟典", "course": "网络安全日常运维与监控", "classIndex": 8}, {"raw": "★制冷系统安装与调试(王帅)制冷综合实训室", "teacher": "王帅", "course": "★制冷系统安装与调试", "classIndex": 9}, {"raw": "城市轨道交通站行车组织(赵峰)轨道交通实训室一", "teacher": "赵峰", "course": "城市轨道交通站行车组织", "classIndex": 10}, {"raw": "电工基础\n(阮宸宇)", "teacher": "阮宸宇", "course": "电工基础", "classIndex": 11}, {"raw": "城市轨道交通站行车组织(胡雪静)223", "teacher": "胡雪静", "course": "城市轨道交通站行车组织", "classIndex": 12}, {"raw": "城市轨道交通站务工作组织\n(邢建姝)", "teacher": "邢建姝", "course": "城市轨道交通站务工作组织", "classIndex": 13}, {"raw": "体育与健康\n(邢方凯)", "teacher": "邢方凯", "course": "体育与健康", "classIndex": 14}, {"raw": "数字技术应用\n(洪轩)D3", "teacher": "洪轩", "course": "数字技术应用", "classIndex": 15}, {"raw": "体育与健康\n(王晓丽)J1", "teacher": "王晓丽", "course": "体育与健康", "classIndex": 16}, {"raw": "思想政治\n(易强文)111", "teacher": "易强文", "course": "思想政治", "classIndex": 17}, {"raw": "空气调节\n(朱彩兰)暖通综合实训室", "teacher": "朱彩兰", "course": "空气调节", "classIndex": 18}], "五12": [{"raw": "网络安全产品安全与调试\n（刘晟典）H2", "teacher": "刘晟典", "course": "网络安全产品安全与调试", "classIndex": 0}, {"raw": "管理学\n(周静)", "teacher": "周静", "course": "管理学", "classIndex": 1}, {"raw": "历史\n（柳德攀）", "teacher": "柳德攀", "course": "历史", "classIndex": 2}, {"raw": "电子商务基础\n(徐邦仪)D2", "teacher": "徐邦仪", "course": "电子商务基础", "classIndex": 3}, {"raw": "信息网络布线\n(刘运琦)H4", "teacher": "刘运琦", "course": "信息网络布线", "classIndex": 4}, {"raw": "机械基础\n(张梓煜)", "teacher": "张梓煜", "course": "机械基础", "classIndex": 5}, {"raw": "思想政治\n(程露)", "teacher": "程露", "course": "思想政治", "classIndex": 6}, {"raw": "电子商务安全技术\n(秦楠)", "teacher": "秦楠", "course": "电子商务安全技术", "classIndex": 7}, {"raw": "语文\n(耿红梅)", "teacher": "耿红梅", "course": "语文", "classIndex": 8}, {"raw": "制冷技术基础\n(朱彩兰)", "teacher": "朱彩兰", "course": "制冷技术基础", "classIndex": 9}, {"raw": "城市轨道交通站行车组织(赵峰)轨道交通实训室一", "teacher": "赵峰", "course": "城市轨道交通站行车组织", "classIndex": 10}, {"raw": "电子技术基础\n(于向东)", "teacher": "于向东", "course": "电子技术基础", "classIndex": 11}, {"raw": "英语\n(张军霞)", "teacher": "张军霞", "course": "英语", "classIndex": 12}, {"raw": "城市轨道交通概论\n(邢建姝)", "teacher": "邢建姝", "course": "城市轨道交通概论", "classIndex": 13}, {"raw": "机械制图\n(邓建军)", "teacher": "邓建军", "course": "机械制图", "classIndex": 14}, {"raw": "通用职业素质\n(李昀倩)", "teacher": "李昀倩", "course": "通用职业素质", "classIndex": 15}, {"raw": "★小型网络安装与调试\n(李晓菲)J1", "teacher": "李晓菲", "course": "★小型网络安装与调试", "classIndex": 16}, {"raw": "●制冷系统维护与保养\n(李晶)焊接实训室", "teacher": "李晶", "course": "●制冷系统维护与保养", "classIndex": 17}, {"raw": "中央空调系统运行管理(阮宸宇)中央空调实训室", "teacher": "阮宸宇", "course": "中央空调系统运行管理", "classIndex": 18}], "五34": [{"raw": "网络安全产品安全与调试\n（刘晟典）H2", "teacher": "刘晟典", "course": "网络安全产品安全与调试", "classIndex": 0}, {"raw": "初级会计学\n(李昀倩)", "teacher": "李昀倩", "course": "初级会计学", "classIndex": 1}, {"raw": "体育与健康\n(邢方凯)", "teacher": "邢方凯", "course": "体育与健康", "classIndex": 2}, {"raw": "电子商务基础\n(徐邦仪)D2", "teacher": "徐邦仪", "course": "电子商务基础", "classIndex": 3}, {"raw": "信息网络布线\n(刘运琦)H4", "teacher": "刘运琦", "course": "信息网络布线", "classIndex": 4}, {"raw": "体育与健康\n(王晓丽)", "teacher": "王晓丽", "course": "体育与健康", "classIndex": 5}, {"raw": "城市轨道交通客运服务\n（邢建姝）", "teacher": "邢建姝", "course": "城市轨道交通客运服务", "classIndex": 6}, {"raw": "语文\n（徐倩)", "teacher": "徐倩", "course": "语文", "classIndex": 7}, {"raw": "思想政治\n(程露)", "teacher": "程露", "course": "思想政治", "classIndex": 8}, {"raw": "电工基础\n(于向东)", "teacher": "于向东", "course": "电工基础", "classIndex": 9}, {"raw": "城市轨道交通站行车组织(赵峰)轨道交通实训室一", "teacher": "赵峰", "course": "城市轨道交通站行车组织", "classIndex": 10}, {"raw": "英语\n(张军霞)", "teacher": "张军霞", "course": "英语", "classIndex": 11}, {"raw": "语文\n(耿红梅)", "teacher": "耿红梅", "course": "语文", "classIndex": 12}, {"raw": "英语\n(柳德攀)", "teacher": "柳德攀", "course": "英语", "classIndex": 13}, {"raw": "制冷技术基础\n(王帅)", "teacher": "王帅", "course": "制冷技术基础", "classIndex": 14}, {"raw": "机械制图\n(邓建军)", "teacher": "邓建军", "course": "机械制图", "classIndex": 15}, {"raw": "★小型网络安装与调试\n(李晓菲)J1", "teacher": "李晓菲", "course": "★小型网络安装与调试", "classIndex": 16}, {"raw": "●制冷系统维护与保养\n(李晶)焊接实训室", "teacher": "李晶", "course": "●制冷系统维护与保养", "classIndex": 17}, {"raw": "中央空调系统运行管理(阮宸宇)中央空调实训室", "teacher": "阮宸宇", "course": "中央空调系统运行管理", "classIndex": 18}]}};
+const ORIGINAL_XLSX_B64 = "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";
+const ACTIVE_SLOTS = DATA.slots;
+const FORBIDDEN = new Set(["一56","五56"]);
+let currentSolutions = [];
+let selectedPlan = 0;
+
+function deepClone(x){ return JSON.parse(JSON.stringify(x)); }
+function cellKey(ci,slot){ return ci+"|"+slot; }
+
+function normalizeTeacher(t){ return (t||"").trim(); }
+
+function teacherConflict(state, teacher, slot, excludeKeys=[]){
+  teacher=normalizeTeacher(teacher);
+  if(!teacher) return null;
+  const ex=new Set(excludeKeys);
+  for(let ci=0;ci<DATA.classes.length;ci++){
+    const k=cellKey(ci,slot);
+    if(ex.has(k)) continue;
+    const a=state[slot][ci];
+    if(a && normalizeTeacher(a.teacher)===teacher) return {ci,slot,assignment:a};
+  }
+  return null;
+}
+
+function parseInput(text){
+  text=(text||"").replace(/\s+/g,"").replace(/，/g,"、");
+  const m=text.match(/^(.*?)([\u4e00-\u9fa5]{2,4})$/);
+  if(!m) throw new Error("请输入类似：二12杨鸿");
+  const spec=m[1], teacher=m[2];
+  const parts=spec.split("、").filter(Boolean);
+  let requests=[];
+  for(const part of parts){
+    const mm=part.match(/^([一二三四五])([1-6]+)$/);
+    if(!mm) throw new Error("时间格式不正确："+part);
+    const day=mm[1], digits=mm[2];
+    let groups=[];
+    // 允许12、34、56的任意组合，如1234、1256、123456
+    if(digits.includes("1") || digits.includes("2")){
+      if(!(digits.includes("1")&&digits.includes("2"))) throw new Error("节次必须按12、34、56成组输入");
+      groups.push("12");
+    }
+    if(digits.includes("3") || digits.includes("4")){
+      if(!(digits.includes("3")&&digits.includes("4"))) throw new Error("节次必须按12、34、56成组输入");
+      groups.push("34");
+    }
+    if(digits.includes("5") || digits.includes("6")){
+      if(!(digits.includes("5")&&digits.includes("6"))) throw new Error("节次必须按12、34、56成组输入");
+      groups.push("56");
+    }
+    for(const g of groups){
+      const slot=day+g;
+      if(FORBIDDEN.has(slot)) throw new Error(slot+"不是上课时间，不可调");
+      if(!ACTIVE_SLOTS.includes(slot)) throw new Error(slot+"不在当前课表有效时段");
+      requests.push(slot);
+    }
+  }
+  requests=[...new Set(requests)];
+  if(requests.length>3) throw new Error("本版先按一张调课单最多3个单元格处理，请分批调课");
+  return {teacher,requests};
+}
+
+function locateRequests(state, teacher, slots){
+  let found=[];
+  for(const slot of slots){
+    let hits=[];
+    for(let ci=0;ci<DATA.classes.length;ci++){
+      if(normalizeTeacher(state[slot][ci].teacher)===teacher) hits.push(ci);
+    }
+    if(hits.length===0) throw new Error(teacher+"在"+slot+"没有查到课程");
+    if(hits.length>1) throw new Error(teacher+"在"+slot+"原课表已出现撞课，请先核对母表");
+    found.push({slot,ci:hits[0]});
+  }
+  return found;
+}
+
+// 在某班两个时段交换完整课程单元格
+function applySwap(state, ci, s1, s2){
+  const tmp=state[s1][ci];
+  state[s1][ci]=state[s2][ci];
+  state[s2][ci]=tmp;
+}
+
+// 搜索为 helper 在 targetSlot 腾出冲突。
+// 返回若干种 {state, ops, helpers}
+function resolveConflict(state, helper, targetSlot, excludeKey, helpers, depthLeft, visited){
+  const conflict=teacherConflict(state, helper, targetSlot, [excludeKey]);
+  if(!conflict) return [{state,ops:[],helpers:new Set(helpers)}];
+  if(depthLeft<=0) return [];
+
+  const sig=helper+"@"+targetSlot+"#"+conflict.ci;
+  if(visited.has(sig)) return [];
+  const nextVisited=new Set(visited); nextVisited.add(sig);
+
+  let out=[];
+  const ci=conflict.ci;
+  const src=targetSlot; // helper当前冲突课程就在这个时段
+  for(const alt of ACTIVE_SLOTS){
+    if(alt===src || FORBIDDEN.has(alt)) continue;
+    const altA=state[alt][ci];
+    if(!altA || !altA.teacher) continue;
+    const other=altA.teacher;
+    if(other===helper) continue;
+
+    // helper必须能去alt
+    if(teacherConflict(state, helper, alt, [cellKey(ci,src)])) continue;
+
+    let newHelpers=new Set(helpers);
+    newHelpers.add(helper);
+    newHelpers.add(other);
+    if(newHelpers.size>3) continue;
+
+    // other要去src，若有冲突则先递归解决
+    const prepared=resolveConflict(
+      deepClone(state), other, src, cellKey(ci,alt),
+      newHelpers, depthLeft-1, nextVisited
+    );
+
+    for(const pr of prepared){
+      // 再确认交换双方此刻均可落位
+      if(teacherConflict(pr.state, helper, alt, [cellKey(ci,src)])) continue;
+      if(teacherConflict(pr.state, other, src, [cellKey(ci,alt)])) continue;
+      const ns=deepClone(pr.state);
+      const before1=ns[src][ci], before2=ns[alt][ci];
+      applySwap(ns,ci,src,alt);
+      const op={ci,s1:src,s2:alt,a:before1,b:before2,kind:"assist"};
+      out.push({state:ns,ops:pr.ops.concat([op]),helpers:new Set(pr.helpers)});
+      if(out.length>=8) return out;
+    }
+  }
+  return out;
+}
+
+function findSingleSolutions(baseState, req, maxSolutions=8){
+  const {ci,slot:orig}=req;
+  const applicant=baseState[orig][ci].teacher;
+  let sols=[];
+
+  for(const target of ACTIVE_SLOTS){
+    if(target===orig || FORBIDDEN.has(target)) continue;
+    const targetA=baseState[target][ci];
+    if(!targetA || !targetA.teacher) continue;
+    const helper=targetA.teacher;
+    if(helper===applicant) continue;
+
+    // 申请人在新时间不能撞课
+    if(teacherConflict(baseState, applicant, target, [cellKey(ci,orig)])) continue;
+
+    let helpers=new Set([helper]);
+    if(helpers.size>3) continue;
+
+    // helper去申请人的原时间，若撞课则自动腾冲突
+    const prepared=resolveConflict(
+      deepClone(baseState), helper, orig, cellKey(ci,target),
+      helpers, 2, new Set()
+    );
+
+    for(const pr of prepared){
+      if(teacherConflict(pr.state, applicant, target, [cellKey(ci,orig)])) continue;
+      if(teacherConflict(pr.state, helper, orig, [cellKey(ci,target)])) continue;
+
+      const ns=deepClone(pr.state);
+      const before1=ns[orig][ci], before2=ns[target][ci];
+      applySwap(ns,ci,orig,target);
+
+      const primary={ci,s1:orig,s2:target,a:before1,b:before2,kind:"primary"};
+      // 输出顺序按用户习惯：主调换先写，再写解决撞课的辅助调换
+      const ops=[primary].concat(pr.ops);
+
+      const hs=new Set(pr.helpers); hs.add(helper);
+      if(hs.size>3) continue;
+
+      sols.push({state:ns,ops,helpers:[...hs]});
+      if(sols.length>=maxSolutions) break;
+    }
+    if(sols.length>=maxSolutions) break;
+  }
+  return sols;
+}
+
+function solveAll(parsed, variantLimit=2){
+  const initial=deepClone(DATA.cells);
+  const located=locateRequests(initial,parsed.teacher,parsed.requests);
+
+  // 顺序处理最多3个申请时段，每次在上一次生成的新课表基础上继续
+  let branches=[{state:initial,ops:[],helpers:new Set()}];
+  for(const req0 of located){
+    let next=[];
+    for(const br of branches){
+      // 在变化后的表里重新定位申请老师该原时段所在班级
+      let ci=-1;
+      for(let j=0;j<DATA.classes.length;j++){
+        if(normalizeTeacher(br.state[req0.slot][j].teacher)===parsed.teacher){ci=j;break;}
+      }
+      if(ci<0) continue;
+      const sols=findSingleSolutions(br.state,{ci,slot:req0.slot},6);
+      for(const s of sols){
+        const hs=new Set([...br.helpers,...s.helpers]);
+        if(hs.size>3) continue;
+        next.push({state:s.state,ops:br.ops.concat(s.ops),helpers:hs});
+        if(next.length>=12) break;
+      }
+      if(next.length>=12) break;
+    }
+    branches=next;
+    if(branches.length===0) break;
+  }
+
+  // 去重，优先：操作次数少、协助老师少
+  branches.sort((a,b)=>a.ops.length-b.ops.length || a.helpers.size-b.helpers.size);
+  let seen=new Set(), ans=[];
+  for(const b of branches){
+    const sig=b.ops.map(o=>o.ci+":"+o.s1+"-"+o.s2).join("|");
+    if(seen.has(sig)) continue;
+    seen.add(sig); ans.push(b);
+    if(ans.length>=variantLimit) break;
+  }
+  return ans;
+}
+
+function opText(op, idx, total){
+  const cls=DATA.classes[op.ci].label;
+  const a=op.a.teacher || "未知";
+  const b=op.b.teacher || "未知";
+  return `${idx}:${cls}${op.s1}${a}和${op.s2}${b}对调${idx===total?"，可完成。":"。"}`;
+}
+
+function solutionText(sol){
+  return sol.ops.map((o,i)=>opText(o,(i+1),sol.ops.length)).join("\n");
+}
+
+function startSchedule(){
+  const p1=document.getElementById("p1"), p2=document.getElementById("p2");
+  p1.classList.remove("bad"); p2.classList.remove("bad");
+  try{
+    const parsed=parseInput(document.getElementById("input").value);
+    const sols=solveAll(parsed,2);
+    currentSolutions=sols;
+    if(sols.length===0){
+      p1.textContent="不可调";
+      p2.textContent="不可调";
+      p1.classList.add("bad"); p2.classList.add("bad");
+      selectedPlan=0;
+      document.getElementById("c1").checked=false;
+      document.getElementById("c2").checked=false;
+      document.getElementById("status").textContent="在“最多3位被调课老师”的当前规则内未找到可行方案。";
+      return;
+    }
+    p1.textContent=solutionText(sols[0]);
+    p2.textContent=sols[1]?solutionText(sols[1]):"暂无第二方案";
+    selectedPlan=1;
+    document.getElementById("c1").checked=true;
+    document.getElementById("c2").checked=false;
+    document.getElementById("status").textContent=
+      `已按总课表0910计算；本次输入共${parsed.requests.length}个课表单元格。方案一已默认选择。`;
+  }catch(e){
+    currentSolutions=[];
+    selectedPlan=0;
+    p1.textContent=e.message; p2.textContent="";
+    p1.classList.add("bad");
+    document.getElementById("c1").checked=false;
+    document.getElementById("c2").checked=false;
+    document.getElementById("status").textContent="";
+  }
+}
+
+function choosePlan(n){
+  if(!currentSolutions[n-1]){
+    document.getElementById("c"+n).checked=false;
+    return;
+  }
+  selectedPlan=n;
+  document.getElementById("c1").checked=n===1;
+  document.getElementById("c2").checked=n===2;
+}
+
+function clearAll(){
+  document.getElementById("input").value="";
+  document.getElementById("p1").textContent="";
+  document.getElementById("p2").textContent="";
+  document.getElementById("p1").classList.remove("bad");
+  document.getElementById("p2").classList.remove("bad");
+  document.getElementById("status").textContent="";
+  currentSolutions=[];selectedPlan=0;
+  document.getElementById("c1").checked=false;
+  document.getElementById("c2").checked=false;
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+function openBrowser(){
+  const wrap=document.getElementById("tablewrap");
+  if(!wrap.dataset.built){
+    let h="<table><tr><th>时间</th>";
+    DATA.classes.forEach(c=>h+=`<th>${c.label}<br>${c.className}</th>`);
+    h+="</tr>";
+    ACTIVE_SLOTS.forEach(slot=>{
+      h+=`<tr><td class="slot">${slot}</td>`;
+      DATA.classes.forEach((c,ci)=>{
+        const a=DATA.cells[slot][ci];
+        h+=`<td>${(a.raw||"").replace(/</g,"&lt;")}</td>`;
+      });
+      h+="</tr>";
+    });
+    h+="</table>";
+    wrap.innerHTML=h; wrap.dataset.built="1";
+  }
+  document.getElementById("browser").style.display="block";
+}
+document.querySelector(".browserhint").onclick=()=>{document.getElementById("browser").style.display="none";};
+
+function b64ToUint8(b64){
+  const s=atob(b64), a=new Uint8Array(s.length);
+  for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i);
+  return a;
+}
+
+function downloadNewTable(){
+  if(!selectedPlan || !currentSolutions[selectedPlan-1]){
+    alert("请先开始调课并选择一个可行方案");
+    return;
+  }
+  if(typeof XLSX==="undefined"){
+    alert("Excel组件未加载，请联网后再试。");
+    return;
+  }
+  const bytes=b64ToUint8(ORIGINAL_XLSX_B64);
+  const wb=XLSX.read(bytes,{type:"array",cellStyles:true});
+  const ws=wb.Sheets["2-11周课表 (2)"];
+  const sol=currentSolutions[selectedPlan-1];
+
+  // 根据最终state，把13个有效时段、19个班级写回原表对应单元格
+  for(const slot of ACTIVE_SLOTS){
+    const row=DATA.slotToRow[slot]+1; // JS数据行号为0起源于Excel行索引? 这里DATA存的是inspect 0-based，对应Excel行=+1
+    for(let ci=0;ci<DATA.classes.length;ci++){
+      const colIndex=DATA.classes[ci].col; // 0-based
+      const addr=XLSX.utils.encode_cell({r:row-1,c:colIndex});
+      if(!ws[addr]) ws[addr]={t:"s",v:""};
+      ws[addr].v=sol.state[slot][ci].raw||"";
+      ws[addr].t="s";
+    }
+  }
+  XLSX.writeFile(wb,`调课新表_基于0910_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+function printForm(){
+  if(!selectedPlan || !currentSolutions[selectedPlan-1]){
+    alert("请先选择一个可行方案");
+    return;
+  }
+  alert("调课算法已接通；下一版把所选方案自动填写到你上传的“调课单”模板中。");
+}
+</script>
+</body>
+</html>
