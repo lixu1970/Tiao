@@ -24,8 +24,8 @@ body{min-height:100vh}
 .note{font-size:12px;color:#667085;margin:6px 1px 0;line-height:17px}
 .footer{text-align:center;color:#667085;font-size:12px;margin-top:7px}
 #browser{display:none;position:fixed;inset:0;background:#fff;z-index:99;overflow:auto;-webkit-overflow-scrolling:touch}
-.browserbar{position:sticky;top:0;z-index:3;background:#16468d;color:#fff;padding:8px;text-align:center;font-weight:700}
-.browserhint{position:sticky;top:37px;z-index:2;background:#edf3ff;color:#344054;text-align:center;font-size:12px;padding:5px}
+.browserbar{position:sticky;top:0;z-index:3;background:#16468d;color:#fff;padding:10px 8px;text-align:center;font-weight:700;font-size:18px}
+.browserhint{position:sticky;top:44px;z-index:2;background:#edf3ff;color:#16468d;text-align:center;font-size:17px;font-weight:700;line-height:24px;padding:10px 8px;border-bottom:1px solid #b8c7df}
 .tablewrap{overflow:auto;padding:8px;transform-origin:top left}
 table{border-collapse:collapse;font-size:11px;min-width:1600px}
 th,td{border:1px solid #777;padding:4px;vertical-align:top;min-width:78px;white-space:pre-wrap}
@@ -78,7 +78,7 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
     <button class="blue" onclick="downloadNewTable()">生成新课表</button>
     <button class="blue" onclick="clearAll()">清屏</button>
   </div>
-<div class="footer">沙河教务 V260910-12</div>
+<div class="footer">沙河教务 V260910-13</div>
 </div>
 
 <div id="browser">
@@ -88,7 +88,7 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
 </div>
 
 <script>
-const APP_VERSION = "V260910-12";
+const APP_VERSION = "V260910-13";
 async function checkLatestVersion(){
   try{
     const r=await fetch("./latest-version.json?t="+Date.now(),{cache:"no-store"});
