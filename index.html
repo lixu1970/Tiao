@@ -57,12 +57,24 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
 
   <div class="planhead"><span>方案四</span><label class="pick">是否选择 <input id="c4" type="checkbox" onclick="choosePlan(4)"></label></div>
   <div id="p4" class="output"></div>
+
+  <div class="planhead"><span>方案五</span><label class="pick">是否选择 <input id="c5" type="checkbox" onclick="choosePlan(5)"></label></div>
+  <div id="p5" class="output"></div>
+
+  <div class="planhead"><span>方案六</span><label class="pick">是否选择 <input id="c6" type="checkbox" onclick="choosePlan(6)"></label></div>
+  <div id="p6" class="output"></div>
+
+  <div class="planhead"><span>方案七</span><label class="pick">是否选择 <input id="c7" type="checkbox" onclick="choosePlan(7)"></label></div>
+  <div id="p7" class="output"></div>
+
+  <div class="planhead"><span>方案八</span><label class="pick">是否选择 <input id="c8" type="checkbox" onclick="choosePlan(8)"></label></div>
+  <div id="p8" class="output"></div>
 <div class="bottom">
     <button class="blue" onclick="downloadNewTable()">生成新课表</button>
     <button class="blue" onclick="printForm()">打印调课单</button>
     <button class="blue" onclick="clearAll()">清屏</button>
   </div>
-<div class="footer">沙河教务 V260910-5</div>
+<div class="footer">沙河教务 V260910-6</div>
 </div>
 
 <div id="browser">
@@ -205,7 +217,7 @@ function resolveConflict(state, helper, targetSlot, excludeKey, helpers, depthLe
   return out;
 }
 
-function findSingleSolutions(baseState, req, maxSolutions=8){
+function findSingleSolutions(baseState, req, maxSolutions=28){
   const {ci,slot:orig}=req;
   const applicant=baseState[orig][ci].teacher;
   let sols=[];
@@ -252,7 +264,7 @@ function findSingleSolutions(baseState, req, maxSolutions=8){
   return sols;
 }
 
-function solveAll(parsed, variantLimit=4){
+function solveAll(parsed, variantLimit=8){
   const initial=deepClone(DATA.cells);
   const located=locateRequests(initial,parsed.teacher,parsed.requests);
 
@@ -267,14 +279,14 @@ function solveAll(parsed, variantLimit=4){
         if(normalizeTeacher(br.state[req0.slot][j].teacher)===parsed.teacher){ci=j;break;}
       }
       if(ci<0) continue;
-      const sols=findSingleSolutions(br.state,{ci,slot:req0.slot},6);
+      const sols=findSingleSolutions(br.state,{ci,slot:req0.slot},28);
       for(const s of sols){
         const hs=new Set([...br.helpers,...s.helpers]);
         if(hs.size>3) continue;
         next.push({state:s.state,ops:br.ops.concat(s.ops),helpers:hs});
-        if(next.length>=12) break;
+        if(next.length>=60) break;
       }
-      if(next.length>=12) break;
+      if(next.length>=60) break;
     }
     branches=next;
     if(branches.length===0) break;
@@ -308,43 +320,75 @@ function startSchedule(){
   p1.classList.remove("bad"); p2.classList.remove("bad");
   try{
     const parsed=parseInput(document.getElementById("input").value);
-    const sols=solveAll(parsed,4);
+    const sols=solveAll(parsed,8);
     currentSolutions=sols;
     if(sols.length===0){
       p1.textContent="不可调";
       p2.textContent="不可调";
       document.getElementById("p3").textContent="不可调";
       document.getElementById("p4").textContent="不可调";
+      document.getElementById("p5").textContent="不可调";
+      document.getElementById("p6").textContent="不可调";
+      document.getElementById("p7").textContent="不可调";
+      document.getElementById("p8").textContent="不可调";
       p1.classList.add("bad"); p2.classList.add("bad");
       document.getElementById("p3").classList.add("bad");
       document.getElementById("p4").classList.add("bad");
+      document.getElementById("p5").classList.add("bad");
+      document.getElementById("p6").classList.add("bad");
+      document.getElementById("p7").classList.add("bad");
+      document.getElementById("p8").classList.add("bad");
       selectedPlan=0;
       document.getElementById("c1").checked=false;
       document.getElementById("c2").checked=false;
       document.getElementById("c3").checked=false;
       document.getElementById("c4").checked=false;
+    document.getElementById("c5").checked=false;
+    document.getElementById("c6").checked=false;
+    document.getElementById("c7").checked=false;
+    document.getElementById("c8").checked=false;
 return;
     }
     p1.textContent=solutionText(sols[0]);
     p2.textContent=sols[1]?solutionText(sols[1]):"暂无第二方案";
     document.getElementById("p3").textContent=sols[2]?solutionText(sols[2]):"暂无第三方案";
     document.getElementById("p4").textContent=sols[3]?solutionText(sols[3]):"暂无第四方案";
+    document.getElementById("p5").textContent=sols[4]?solutionText(sols[4]):"暂无第五方案";
+    document.getElementById("p6").textContent=sols[5]?solutionText(sols[5]):"暂无第六方案";
+    document.getElementById("p7").textContent=sols[6]?solutionText(sols[6]):"暂无第七方案";
+    document.getElementById("p8").textContent=sols[7]?solutionText(sols[7]):"暂无第八方案";
     selectedPlan=1;
     document.getElementById("c1").checked=true;
     document.getElementById("c2").checked=false;
     document.getElementById("c3").checked=false;
     document.getElementById("c4").checked=false;
+    document.getElementById("c5").checked=false;
+    document.getElementById("c6").checked=false;
+    document.getElementById("c7").checked=false;
+    document.getElementById("c8").checked=false;
 }catch(e){
     currentSolutions=[];
     selectedPlan=0;
     p1.textContent=e.message; p2.textContent="";
     document.getElementById("p3").textContent="";
     document.getElementById("p4").textContent="";
+    document.getElementById("p5").textContent="";
+    document.getElementById("p6").textContent="";
+    document.getElementById("p7").textContent="";
+    document.getElementById("p8").textContent="";
+  document.getElementById("p5").textContent="";
+  document.getElementById("p6").textContent="";
+  document.getElementById("p7").textContent="";
+  document.getElementById("p8").textContent="";
     p1.classList.add("bad");
     document.getElementById("c1").checked=false;
     document.getElementById("c2").checked=false;
     document.getElementById("c3").checked=false;
     document.getElementById("c4").checked=false;
+    document.getElementById("c5").checked=false;
+    document.getElementById("c6").checked=false;
+    document.getElementById("c7").checked=false;
+    document.getElementById("c8").checked=false;
 }
 }
 
@@ -358,6 +402,10 @@ function choosePlan(n){
   document.getElementById("c2").checked=n===2;
   document.getElementById("c3").checked=n===3;
   document.getElementById("c4").checked=n===4;
+  document.getElementById("c5").checked=n===5;
+  document.getElementById("c6").checked=n===6;
+  document.getElementById("c7").checked=n===7;
+  document.getElementById("c8").checked=n===8;
 }
 
 function clearAll(){
@@ -366,10 +414,18 @@ function clearAll(){
   document.getElementById("p2").textContent="";
   document.getElementById("p3").textContent="";
   document.getElementById("p4").textContent="";
+  document.getElementById("p5").textContent="";
+  document.getElementById("p6").textContent="";
+  document.getElementById("p7").textContent="";
+  document.getElementById("p8").textContent="";
   document.getElementById("p1").classList.remove("bad");
   document.getElementById("p2").classList.remove("bad");
   document.getElementById("p3").classList.remove("bad");
   document.getElementById("p4").classList.remove("bad");
+  document.getElementById("p5").classList.remove("bad");
+  document.getElementById("p6").classList.remove("bad");
+  document.getElementById("p7").classList.remove("bad");
+  document.getElementById("p8").classList.remove("bad");
 currentSolutions=[];selectedPlan=0;
   document.getElementById("c1").checked=false;
   document.getElementById("c2").checked=false;
@@ -433,12 +489,64 @@ function downloadNewTable(){
   XLSX.writeFile(wb,`调课新表_基于0910_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
+function esc(s){return String(s??"").replace(/[&<>\"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));}
+function slotDay(s){return ({"一":"一","二":"二","三":"三","四":"四","五":"五"})[s[0]]||s[0];}
+function periodText(s){return s.slice(1);}
+
 function printForm(){
   if(!selectedPlan || !currentSolutions[selectedPlan-1]){
-    alert("请先选择一个可行方案");
-    return;
+    alert("请先选择一个可行方案"); return;
   }
-  alert("调课算法已接通；下一版把所选方案自动填写到你上传的“调课单”模板中。");
+  let parsed;
+  try{ parsed=parseInput(document.getElementById("input").value); }
+  catch(e){ alert(e.message); return; }
+  const sol=currentSolutions[selectedPlan-1];
+  const prim=sol.ops.filter(o=>o.kind==="primary");
+  const applicant=parsed.teacher;
+
+  let appClass=[], appCourse=[], partners=[];
+  prim.forEach(o=>{
+    appClass.push(DATA.classes[o.ci].className || DATA.classes[o.ci].label);
+    appCourse.push(o.a.course||"");
+    partners.push((o.b.teacher||"")+" "+(o.b.course||""));
+  });
+
+  let rows="";
+  for(let i=0;i<3;i++){
+    const o=prim[i];
+    if(o){
+      rows += `<tr><td class="label">原安排的<br>授课时间</td><td colspan="2">（ ）月（ ）日 星期${slotDay(o.s1)} 第${periodText(o.s1)}节</td><td class="label">现要求调至</td><td colspan="3">（ ）月（ ）日 星期${slotDay(o.s2)} 第${periodText(o.s2)}节</td></tr>`;
+    }else{
+      rows += `<tr><td class="label">原安排的<br>授课时间</td><td colspan="2">（ ）月（ ）日 星期（ ）第（ ）节</td><td class="label">现要求调至</td><td colspan="3">（ ）月（ ）日 星期（ ）第（ ）节</td></tr>`;
+    }
+  }
+
+  // 每个非申请人按其在交换中的移动生成通知项
+  const notices={};
+  function addNotice(t,ci,course,from,to){
+    if(!t || t===applicant) return;
+    if(!notices[t]) notices[t]=[];
+    notices[t].push({ci,course,from,to});
+  }
+  sol.ops.forEach(o=>{
+    addNotice(o.a.teacher,o.ci,o.a.course,o.s1,o.s2);
+    addNotice(o.b.teacher,o.ci,o.b.course,o.s2,o.s1);
+  });
+  let noticeHtml="";
+  Object.entries(notices).forEach(([teacher,items],idx)=>{
+    let rr="";
+    items.forEach(it=>{
+      rr+=`<tr><td>${esc(DATA.classes[it.ci].className||DATA.classes[it.ci].label)}</td><td>${esc(it.course)}</td><td></td><td></td><td>${slotDay(it.from)}</td><td>${periodText(it.from)}</td><td></td><td></td><td>${slotDay(it.to)}</td><td>${periodText(it.to)}</td><td></td></tr>`;
+    });
+    while((rr.match(/<tr>/g)||[]).length<5) rr+=`<tr>${'<td></td>'.repeat(11)}</tr>`;
+    noticeHtml+=`<section class="notice ${idx?'pagebreak':''}"><h3>北京市工贸技师学院</h3><h2>课 程 变 动 通 知 单</h2><p><span class="fill">${esc(teacher)}</span> 老师：</p><p>经研究，你的课程作如下调整，请按如下时间调课、授课，谢谢合作。</p><table><tr><th rowspan="2">班级</th><th rowspan="2">课程</th><th colspan="4">原课程</th><th colspan="4">现调</th><th rowspan="2">备注</th></tr><tr><th>周次</th><th>日月</th><th>星期</th><th>节次</th><th>周次</th><th>日月</th><th>星期</th><th>节次</th></tr>${rr}</table><p class="sign">教务科科长签字：　　　　　　年　 月　 日</p></section>`;
+  });
+
+  const doc=`<!doctype html><html><head><meta charset="utf-8"><title>调课单</title><style>
+  @page{size:A4;margin:12mm}body{font-family:"SimSun","Microsoft YaHei",serif;color:#000;font-size:13px;margin:0}.sheet{max-width:760px;margin:auto}h3{text-align:center;margin:3px 0;font-size:17px}h2{text-align:center;letter-spacing:8px;margin:8px 0;font-size:22px}p{margin:5px 6px}.meta{display:flex;justify-content:space-between}.fill{color:#d40000}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:4px 3px;text-align:center;vertical-align:middle;height:34px;font-size:12px}.label{width:13%}.approval td{height:45px}.sign{text-align:right;margin-top:14px}.cut{border-top:1px dashed #888;margin:22px 0}.notice{margin-top:8px}.notice table th,.notice table td{height:31px}.pagebreak{page-break-before:always}@media print{button{display:none}.pagebreak{page-break-before:always}}</style></head><body><div class="sheet"><section><h3>北京市工贸技师学院</h3><h2>课 程 变 动 申 请 单</h2><div class="meta"><span>编号：GMXY-QR/7.5-25</span><span>版号：C/0</span></div><table><tr><td class="label">申请调课<br>教师姓名</td><td colspan="2" class="fill">${esc(applicant)}</td><td class="label">调课<br>理由</td><td colspan="3"></td></tr><tr><td class="label">要求调课<br>班级</td><td colspan="2" class="fill">${esc([...new Set(appClass)].join('、'))}</td><td class="label">调课<br>课程</td><td class="fill">${esc([...new Set(appCourse)].join('、'))}</td><td>要与何教师何课程调课</td><td class="fill">${esc([...new Set(partners)].join('；'))}</td></tr>${rows}<tr class="approval"><td>教研室<br>意见</td><td colspan="2"></td><td>教务科<br>意见</td><td colspan="3"></td></tr></table><p class="sign">填单日期：　　年　 月　 日</p></section><div class="cut"></div>${noticeHtml||'<p>本方案没有需要单独通知的被调课教师。</p>'}<p style="text-align:center;margin-top:16px"><button onclick="window.print()">打印 / 保存PDF</button></p></div></body></html>`;
+  const w=window.open("","_blank");
+  if(!w){alert("浏览器阻止了弹窗，请允许弹窗后再试");return;}
+  w.document.open(); w.document.write(doc); w.document.close();
 }
 </script>
 </body>
