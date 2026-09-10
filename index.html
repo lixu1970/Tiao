@@ -65,7 +65,7 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
 
 <div id="main">
   <div class="header">调课小程序</div>
-<input id="input" placeholder="例如：周二12节杨鸿 / 周二1234节杨鸿 / 周二12节、周三34节杨鸿">
+<input id="input" placeholder="如：周一1234节秦楠周二12节秦楠周三1234节秦楠">
   <div class="actionrow">
     <button class="blue" onclick="startSchedule()">开始调课</button>
     <button class="blue" onclick="openBrowser()">原课表浏览</button>
@@ -77,7 +77,7 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
     <button class="blue" onclick="downloadNewTable()">生成新课表</button>
     <button class="blue" onclick="clearAll()">清屏</button>
   </div>
-<div class="footer">沙河教务 V260910-9</div>
+<div class="footer">沙河教务 V260910-10</div>
 </div>
 
 <div id="browser">
@@ -87,7 +87,7 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
 </div>
 
 <script>
-const APP_VERSION = "V260910-9";
+const APP_VERSION = "V260910-10";
 async function checkLatestVersion(){
   try{
     const r=await fetch("./latest-version.json?t="+Date.now(),{cache:"no-store"});
@@ -144,18 +144,61 @@ function teacherConflict(state, teacher, slot, excludeKeys=[]){
 
 function parseInput(text){
   text=(text||"").replace(/\s+/g,"").replace(/，/g,"、");
-  // 标准格式：周二12节杨鸿 / 周二1234节杨鸿 / 周二12节、周三34节杨鸿
-  // 同时兼容旧格式：二12杨鸿
-  const m=text.match(/^((?:周?[一二三四五][1-6]+节?)(?:、周?[一二三四五][1-6]+节?)*)([\u4e00-\u9fa5]{2,4})$/);
-  if(!m) throw new Error("请输入类似：周二12节杨鸿");
-  let spec=m[1], teacher=m[2];
-  spec=spec.replace(/周/g,"").replace(/节/g,"");
+  if(!text) throw new Error("请输入调课信息");
+
+  // 支持：
+  // 1. 周二12节杨鸿
+  // 2. 周二1234节杨鸿
+  // 3. 周二12节、周三34节杨鸿
+  // 4. 周一1234节秦楠周二12节秦楠周三1234节秦楠
+  // 5. 周一1234节、周二12节、周三1234节秦楠
+  // 同时兼容旧式“二12杨鸿”
+
+  let chunks=[];
+  let repeated = [...text.matchAll(/(?:周)?([一二三四五])([1-6]+)(?:节)?([\u4e00-\u9fa5]{2,4})/g)];
+
+  // 判断是否属于“每个日期后都重复姓名”的连续写法
+  if(repeated.length>=2){
+    let rebuilt = repeated.map(x=>x[0]).join("");
+    let compact = text.replace(/、/g,"");
+    if(rebuilt===compact){
+      const teacher=repeated[0][3];
+      if(repeated.some(x=>x[3]!==teacher)){
+        throw new Error("一次申请只能填写同一位老师");
+      }
+      for(const x of repeated) chunks.push({day:x[1],digits:x[2]});
+      return buildParsed(teacher,chunks);
+    }
+  }
+
+  // 普通写法：姓名只写一次，位于最后
+  const mm=text.match(/^(.*?)([\u4e00-\u9fa5]{2,4})$/);
+  if(!mm) throw new Error("请输入类似：周二12节杨鸿");
+  let spec=mm[1], teacher=mm[2];
+  spec=spec.replace(/节/g,"").replace(/周/g,"");
   const parts=spec.split("、").filter(Boolean);
-  let requests=[];
+
+  // 也允许未写顿号但重复“周”字，如：周一1234节周二12节周三34节秦楠
+  if(parts.length===1 && /[一二三四五].*[一二三四五]/.test(parts[0])){
+    const found=[...spec.matchAll(/([一二三四五])([1-6]+)/g)];
+    if(found.length){
+      for(const x of found) chunks.push({day:x[1],digits:x[2]});
+      return buildParsed(teacher,chunks);
+    }
+  }
+
   for(const part of parts){
-    const mm=part.match(/^([一二三四五])([1-6]+)$/);
-    if(!mm) throw new Error("时间格式不正确："+part+"，例如：周二12节");
-    const day=mm[1], digits=mm[2];
+    const p=part.match(/^([一二三四五])([1-6]+)$/);
+    if(!p) throw new Error("时间格式不正确："+part);
+    chunks.push({day:p[1],digits:p[2]});
+  }
+  return buildParsed(teacher,chunks);
+}
+
+function buildParsed(teacher,chunks){
+  let requests=[];
+  for(const item of chunks){
+    const day=item.day, digits=item.digits;
     let groups=[];
     if(digits.includes("1") || digits.includes("2")){
       if(!(digits.includes("1")&&digits.includes("2"))) throw new Error("节次必须按12、34、56成组输入");
