@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes">
 <title>调课小程序</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;background:#f5f7fb;font-family:-apple-system,BlinkMacSystemFont,"Microsoft YaHei",Arial,sans-serif;color:#18202a}
@@ -77,7 +78,7 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
     <button class="blue" onclick="downloadNewTable()">生成新课表</button>
     <button class="blue" onclick="clearAll()">清屏</button>
   </div>
-<div class="footer">沙河教务 V260910-10</div>
+<div class="footer">沙河教务 V260910-11</div>
 </div>
 
 <div id="browser">
@@ -87,7 +88,7 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
 </div>
 
 <script>
-const APP_VERSION = "V260910-10";
+const APP_VERSION = "V260910-11";
 async function checkLatestVersion(){
   try{
     const r=await fetch("./latest-version.json?t="+Date.now(),{cache:"no-store"});
@@ -330,6 +331,9 @@ function findSingleSolutions(baseState, req){
       // 输出顺序按用户习惯：主调换先写，再写解决撞课的辅助调换
       const ops=[primary].concat(pr.ops);
 
+      const assistedMoves=ops.filter(o=>o.kind==="assist").length;
+      if(assistedMoves>2) continue;
+
       const hs=new Set(pr.helpers); hs.add(helper);
       if(hs.size>3) continue;
 
@@ -358,6 +362,10 @@ function solveAll(parsed){
       for(const s of sols){
         const hs=new Set([...br.helpers,...s.helpers]);
         if(hs.size>3) continue;
+
+        const combinedOps=br.ops.concat(s.ops);
+        const combinedAssist=combinedOps.filter(o=>o.kind==="assist").length;
+        if(combinedAssist>2) continue;
         next.push({state:s.state,ops:br.ops.concat(s.ops),helpers:hs});
       }
     }
@@ -565,38 +573,105 @@ function printForm(){
   const doc=`<!doctype html><html><head><meta charset="utf-8"><title>调课单</title><style>
   @page{size:A4;margin:18mm 20mm}body{font-family:"SimSun","Microsoft YaHei",serif;color:#000;font-size:13px;margin:0;padding-bottom:86px}.sheet{max-width:690px;margin:auto}.previewTools{position:sticky;bottom:0;z-index:50;display:flex;gap:12px;justify-content:center;background:rgba(255,255,255,.97);padding:12px 10px 16px;border-top:1px solid #d0d5dd}.previewTools button{width:46%;height:54px;border:0;border-radius:9px;background:#16468d;color:#fff;font-size:20px;font-weight:700;box-shadow:0 2px 7px rgba(0,0,0,.16)}h3{text-align:center;margin:3px 0 10px;font-size:17px}h2{text-align:center;letter-spacing:8px;margin:8px 0 16px;font-size:22px}p{margin:5px 6px}.meta{display:flex;justify-content:space-between}.fill{color:#000}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:4px 3px;text-align:center;vertical-align:middle;height:34px;font-size:12px}.label{width:13%}.approval td{height:45px}.sign{text-align:right;margin-top:14px}.notice{margin-top:8px}.notice table th,.notice table td{height:31px}.pagebreak{page-break-before:always}@media print{.previewTools{display:none!important}button{display:none}body{padding-bottom:0}.pagebreak{page-break-before:always}}</style></head><body><div class="sheet"><section><h3>北京市工贸技师学院</h3><h2>课 程 变 动 申 请 单</h2><div class="meta"><span>编号：GMXY-QR/7.5-25</span><span>版号：C/0</span></div><table><tr><td class="label">申请调课<br>教师姓名</td><td colspan="2" class="fill">${esc(applicant)}</td><td class="label">调课<br>理由</td><td colspan="3"></td></tr><tr><td class="label">要求调课<br>班级</td><td colspan="2" class="fill">${esc([...new Set(appClass)].join('、'))}</td><td class="label">调课<br>课程</td><td class="fill">${esc([...new Set(appCourse)].join('、'))}</td><td>要与何教师何课程调课</td><td class="fill">${esc([...new Set(partners)].join('；'))}</td></tr>${rows}<tr class="approval"><td>教研室<br>意见</td><td colspan="2"></td><td>教务科<br>意见</td><td colspan="3"></td></tr></table><p class="sign">填单日期：　　年　 月　 日</p></section>${noticeHtml||'<p>本方案没有需要单独通知的被调课教师。</p>'}</div>
 <div class="previewTools">
-<button onclick="downloadEditableForm()">下载可修改版</button>
+<button onclick="downloadEditableForm()">下载DOCX</button>
 <button onclick="returnToSchedule()">返回</button>
 </div>
 <script>
-function downloadEditableForm(){
+async function downloadEditableForm(){
   try{
-    var copy=document.documentElement.cloneNode(true);
-    var tools=copy.querySelector(".previewTools");
-    if(tools) tools.remove();
+    if(typeof docx==="undefined"){
+      alert("Word组件未加载，请联网后重新打开页面再试。");
+      return;
+    }
 
-    // 去掉预览专用固定底部留白，生成适合Word编辑的正文
-    var body=copy.querySelector("body");
-    if(body) body.style.paddingBottom="0";
+    const {
+      Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+      WidthType, AlignmentType, BorderStyle, PageBreak
+    } = docx;
 
-    var wordHtml =
-      '<html xmlns:o="urn:schemas-microsoft-com:office:office" '+
-      'xmlns:w="urn:schemas-microsoft-com:office:word" '+
-      'xmlns="http://www.w3.org/TR/REC-html40">'+
-      '<head><meta charset="utf-8"><title>调课单</title></head>'+
-      '<body>'+document.querySelector(".sheet").innerHTML+'</body></html>';
+    const sheet=document.querySelector(".sheet");
+    if(!sheet){
+      alert("没有找到调课单内容");
+      return;
+    }
 
-    var blob=new Blob(["\ufeff",wordHtml],{type:"application/msword"});
-    var url=URL.createObjectURL(blob);
-    var a=document.createElement("a");
+    const children=[];
+
+    function addText(el){
+      const txt=(el.innerText||"").trim();
+      if(!txt) return;
+      children.push(new Paragraph({
+        children:[new TextRun({text:txt,font:"SimSun",size:22,color:"000000"})],
+        spacing:{after:100}
+      }));
+    }
+
+    function tableToDocx(tableEl){
+      const rows=[...tableEl.rows].map(tr=>{
+        const cells=[...tr.cells].map(td=>new TableCell({
+          children:[new Paragraph({
+            alignment:AlignmentType.CENTER,
+            children:[new TextRun({
+              text:(td.innerText||"").trim(),
+              font:"SimSun",
+              size:20,
+              color:"000000"
+            })]
+          })]
+        }));
+        return new TableRow({children:cells});
+      });
+
+      return new Table({
+        rows,
+        width:{size:100,type:WidthType.PERCENTAGE},
+        borders:{
+          top:{style:BorderStyle.SINGLE,size:4,color:"000000"},
+          bottom:{style:BorderStyle.SINGLE,size:4,color:"000000"},
+          left:{style:BorderStyle.SINGLE,size:4,color:"000000"},
+          right:{style:BorderStyle.SINGLE,size:4,color:"000000"},
+          insideHorizontal:{style:BorderStyle.SINGLE,size:4,color:"000000"},
+          insideVertical:{style:BorderStyle.SINGLE,size:4,color:"000000"}
+        }
+      });
+    }
+
+    [...sheet.children].forEach((el)=>{
+      if(el.classList && el.classList.contains("pagebreak") && children.length){
+        children.push(new Paragraph({children:[new PageBreak()]}));
+      }
+
+      if(el.tagName==="TABLE"){
+        children.push(tableToDocx(el));
+      }else if(el.querySelectorAll && el.querySelectorAll("table").length){
+        [...el.children].forEach(node=>{
+          if(node.tagName==="TABLE") children.push(tableToDocx(node));
+          else addText(node);
+        });
+      }else{
+        addText(el);
+      }
+    });
+
+    const doc=new Document({
+      sections:[{
+        properties:{page:{margin:{top:900,right:900,bottom:900,left:900}}},
+        children
+      }]
+    });
+
+    const blob=await Packer.toBlob(doc);
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
     a.href=url;
-    a.download="调课单_可修改版.doc";
+    a.download="调课单_可修改版.docx";
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(function(){URL.revokeObjectURL(url)},1500);
+    setTimeout(()=>URL.revokeObjectURL(url),1500);
   }catch(e){
-    alert("下载未成功，请重新点击“下载可修改版”。");
+    console.error(e);
+    alert("DOCX生成未成功，请重新点击“下载DOCX”。");
   }
 }
 
