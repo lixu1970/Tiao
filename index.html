@@ -52,6 +52,58 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
   color:#fff;font-size:18px;font-weight:700;
 }
 
+
+.classClick{
+  color:#16468d;
+  text-decoration:underline;
+  text-decoration-thickness:1px;
+  text-underline-offset:3px;
+  font-weight:700;
+  cursor:pointer;
+  display:inline;
+}
+.classClick:active{opacity:.65}
+.classInfoBox{
+  display:none;
+  margin:5px 0 9px;
+  background:#edf3ff;
+  border:1px solid #9bb3d7;
+  border-radius:8px;
+  padding:9px 10px;
+  font-size:15px;
+  line-height:23px;
+  color:#1d2939;
+}
+.classInfoBox.show{display:block}
+.classInfoTitle{
+  color:#16468d;
+  font-size:16px;
+  font-weight:700;
+  margin-bottom:2px;
+}
+.classInfoRow b{color:#344054}
+
+
+.classInfoTop{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+.classInfoClose{
+  border:0;
+  background:#16468d;
+  color:#fff;
+  width:30px;
+  height:30px;
+  border-radius:50%;
+  font-size:20px;
+  line-height:30px;
+  padding:0;
+  font-weight:700;
+  flex:none;
+}
+
 </style>
 </head>
 
@@ -78,7 +130,7 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
     <button class="blue" onclick="downloadNewTable()">生成新课表</button>
     <button class="blue" onclick="clearAll()">清屏</button>
   </div>
-<div class="footer">沙河教务 V260910-13</div>
+<div class="footer">沙河教务 V260911-2</div>
 </div>
 
 <div id="browser">
@@ -88,7 +140,7 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
 </div>
 
 <script>
-const APP_VERSION = "V260910-13";
+const APP_VERSION = "V260911-2";
 async function checkLatestVersion(){
   try{
     const r=await fetch("./latest-version.json?t="+Date.now(),{cache:"no-store"});
@@ -116,6 +168,14 @@ let workingState = null;
 
 function deepClone(x){ return JSON.parse(JSON.stringify(x)); }
 workingState = deepClone(DATA.cells);
+
+const CLASS_COUNTS = [20, 26, 35, 34, 28, 29, 39, 31, 28, 33, 30, 36, 31, 30, 31, 31, 26, 22, 15];
+const CLASS_ROOMS = ["113、111、H2、H4、J2、D2", "112、D1", "121、D1、H4", "122、D1、D2", "123、J2、H4", "131、制冷综合实训室", "132、轨道交通实训室二", "133、D3", "213、H2", "212、制冷综合实训室", "221、轨道交通实训室一", "222、中央空调实训室", "223、轨道交通实训室一", "231、D2", "232、H4", "233、D3", "J1", "111、焊接实训室", "中央空调实训室、暖通综合实训室"];
+DATA.classes.forEach((c,i)=>{
+  c.studentCount = CLASS_COUNTS[i] || "";
+  c.classrooms = CLASS_ROOMS[i] || "";
+});
+
 function cellKey(ci,slot){ return ci+"|"+slot; }
 
 function normalizeTeacher(t){ return (t||"").trim(); }
@@ -391,8 +451,62 @@ function opText(op, idx, total){
   return `${idx}:${cls}${formatSlot(op.s1)}${a}和${formatSlot(op.s2)}${b}对调${idx===total?"，可完成。":"。"}`;
 }
 
+function escapeHtml(s){
+  return String(s==null?"":s)
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;");
+}
+
+function opHtml(op, idx, total){
+  const c=DATA.classes[op.ci];
+  const a=escapeHtml(op.a.teacher || "未知");
+  const b=escapeHtml(op.b.teacher || "未知");
+  return `${idx}:<span class="classClick" onclick="showClassInfo(${op.ci},this)">${escapeHtml(c.label)}</span>${escapeHtml(formatSlot(op.s1))}${a}和${escapeHtml(formatSlot(op.s2))}${b}对调${idx===total?"，可完成。":"。"}`;
+}
+
 function solutionText(sol){
   return sol.ops.map((o,i)=>opText(o,(i+1),sol.ops.length)).join("\n");
+}
+
+function solutionHtml(sol){
+  return sol.ops.map((o,i)=>opHtml(o,(i+1),sol.ops.length)).join("<br>");
+}
+
+function showClassInfo(ci,el){
+  const c=DATA.classes[ci];
+  const planWrap=el.closest(".planGroup");
+  if(!planWrap) return;
+  const info=planWrap.querySelector(".classInfoBox");
+  if(!info) return;
+
+  const current=info.dataset.classIndex;
+
+  // 再次点击同一个班：关闭
+  if(info.classList.contains("show") && current===String(ci)){
+    closeClassInfo(info);
+    return;
+  }
+
+  info.dataset.classIndex=String(ci);
+  info.innerHTML=
+    `<div class="classInfoTop">`+
+      `<div class="classInfoTitle">${escapeHtml(c.label)} 班级信息</div>`+
+      `<button class="classInfoClose" onclick="closeClassInfo(this.closest('.classInfoBox'))">×</button>`+
+    `</div>`+
+    `<div class="classInfoRow"><b>完整班号：</b>${escapeHtml(c.className)}</div>`+
+    `<div class="classInfoRow"><b>班主任：</b>${escapeHtml(c.head)}</div>`+
+    `<div class="classInfoRow"><b>人数：</b>${escapeHtml(c.studentCount)}人</div>`+
+    `<div class="classInfoRow"><b>上课地点：</b>${escapeHtml(c.classrooms)}</div>`;
+  info.classList.add("show");
+}
+
+function closeClassInfo(info){
+  if(!info) return;
+  info.classList.remove("show");
+  info.innerHTML="";
+  info.dataset.classIndex="";
 }
 
 function renderPlans(sols){
@@ -405,15 +519,25 @@ function renderPlans(sols){
   }
   sols.forEach((sol,i)=>{
     const n=i+1;
+    const group=document.createElement("div");
+    group.className="planGroup";
+
     const head=document.createElement("div");
     head.className="planhead";
     head.innerHTML=`<span>${planLabel(n)}</span><label class="pick">是否选择 <input id="c${n}" type="checkbox" onclick="choosePlan(${n})"></label>`;
+
     const out=document.createElement("div");
     out.className="output";
     out.id="p"+n;
-    out.textContent=solutionText(sol);
-    box.appendChild(head);
-    box.appendChild(out);
+    out.innerHTML=solutionHtml(sol);
+
+    const info=document.createElement("div");
+    info.className="classInfoBox";
+
+    group.appendChild(head);
+    group.appendChild(out);
+    group.appendChild(info);
+    box.appendChild(group);
   });
   selectedPlan=1;
   document.getElementById("c1").checked=true;
