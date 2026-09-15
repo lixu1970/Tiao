@@ -131,7 +131,7 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
     <button class="blue" onclick="downloadNewTable()">生成新课表</button>
     <button class="blue" onclick="clearAll()">清屏</button>
   </div>
-<div class="footer">沙河教务 V260915-1</div>
+<div class="footer">沙河教务 V260915-2</div>
 </div>
 
 <div id="browser">
@@ -141,7 +141,7 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
 </div>
 
 <script>
-const APP_VERSION = "V260915-1";
+const APP_VERSION = "V260915-2";
 async function checkLatestVersion(){
   try{
     const r=await fetch("./latest-version.json?t="+Date.now(),{cache:"no-store"});
@@ -405,7 +405,7 @@ function findSingleSolutions(baseState, req){
 }
 
 function solveAll(parsed){
-  const initial=deepClone(workingState);
+  const initial=deepClone(DATA.cells);
   const located=locateRequests(initial,parsed.teacher,parsed.requests);
 
   // 顺序处理最多3个申请时段，每次在上一次生成的新课表基础上继续
@@ -611,10 +611,8 @@ async function downloadNewTable(){
     return;
   }
 
-  // 本次勾选方案正式写入临时课表。
-  // 后续继续调课时，自动以上一次已确认的新课表为基础。
+  // 每次调课都固定以总课表0910为母表，不累计上一次生成的新课表。
   const sol=currentSolutions[selectedPlan-1];
-  workingState=deepClone(sol.state);
 
   try{
     // 直接打开原始总课表0910的 XLSX 压缩包。
@@ -628,6 +626,129 @@ async function downloadNewTable(){
 
     let sheetXml=await sheetFile.async("string");
 
+    // ---------- 为调课单元格建立橙色/蓝色底色样式 ----------
+    // 只在原样式基础上改 fill，字体/字号/边框/对齐/自动换行等全部沿用原样式。
+    const stylesPath="xl/styles.xml";
+    const stylesFile=zip.file(stylesPath);
+    if(!stylesFile) throw new Error("未找到原课表样式文件");
+    let stylesXml=await stylesFile.async("string");
+
+    function ensureSolidFill(stylesXml,color){
+      const fillsMatch=stylesXml.match(/<fills\b[^>]*count="(\d+)"[^>]*>([\s\S]*?)<\/fills>/);
+      if(!fillsMatch) throw new Error("无法读取原课表填充样式");
+      const oldCount=parseInt(fillsMatch[1],10);
+      const fillXml='<fill><patternFill patternType="solid"><fgColor rgb="'+color+'"/><bgColor indexed="64"/></patternFill></fill>';
+      const newFills=fillsMatch[0]
+        .replace('count="'+oldCount+'"','count="'+(oldCount+1)+'"')
+        .replace('</fills>',fillXml+'</fills>');
+      stylesXml=stylesXml.replace(fillsMatch[0],newFills);
+      return {xml:stylesXml,fillId:oldCount};
+    }
+
+    // Excel ARGB
+    let r=ensureSolidFill(stylesXml,"FFFFA500"); // 橙色
+    stylesXml=r.xml;
+    const orangeFillId=r.fillId;
+
+    r=ensureSolidFill(stylesXml,"FF5B9BD5"); // 蓝色
+    stylesXml=r.xml;
+    const blueFillId=r.fillId;
+
+    function cloneStyleWithFill(styleId,fillId){
+      const xfsMatch=stylesXml.match(/<cellXfs\b[^>]*count="(\d+)"[^>]*>([\s\S]*?)<\/cellXfs>/);
+      if(!xfsMatch) throw new Error("无法读取原课表单元格样式");
+
+      const xfList=[...xfsMatch[2].matchAll(/<xf\b[^>]*(?:\/>|>[\s\S]*?<\/xf>)/g)].map(x=>x[0]);
+      const base=xfList[styleId];
+      if(!base) throw new Error("原课表样式索引不存在："+styleId);
+
+      let cloned=base;
+      if(/\bfillId="\d+"/.test(cloned)){
+        cloned=cloned.replace(/\bfillId="\d+"/,'fillId="'+fillId+'"');
+      }else{
+        cloned=cloned.replace(/^<xf\b/,'<xf fillId="'+fillId+'"');
+      }
+
+      if(/\bapplyFill="\d+"/.test(cloned)){
+        cloned=cloned.replace(/\bapplyFill="\d+"/,'applyFill="1"');
+      }else{
+        cloned=cloned.replace(/^<xf\b/,'<xf applyFill="1"');
+      }
+
+      const oldCount=parseInt(xfsMatch[1],10);
+      const newXfs=xfsMatch[0]
+        .replace('count="'+oldCount+'"','count="'+(oldCount+1)+'"')
+        .replace('</cellXfs>',cloned+'</cellXfs>');
+      stylesXml=stylesXml.replace(xfsMatch[0],newXfs);
+      return oldCount;
+    }
+
+    function getCellStyleId(ref){
+      const reCell=new RegExp('<c\\b([^>]*)\\br="'+ref+'"([^>]*)>');
+      const m=sheetXml.match(reCell);
+      if(!m) return 0;
+      const attrs=(m[1]||"")+" "+(m[2]||"");
+      const sm=attrs.match(/\bs="(\d+)"/);
+      return sm?parseInt(sm[1],10):0;
+    }
+
+    function setCellStyleId(ref,newStyleId){
+      const reCell=new RegExp('<c\\b([^>]*)\\br="'+ref+'"([^>]*)>');
+      const m=sheetXml.match(reCell);
+      if(!m) return;
+      let tag=m[0];
+      if(/\bs="\d+"/.test(tag)){
+        tag=tag.replace(/\bs="\d+"/,' s="'+newStyleId+'"');
+      }else{
+        tag=tag.replace(/<c\b/,'<c s="'+newStyleId+'"');
+      }
+      sheetXml=sheetXml.replace(m[0],tag);
+    }
+
+    // 记录本次方案中哪些单元格需要着色：
+    // primary = 申请人的主调课，橙色
+    // assist  = 为解决撞课产生的被动调课，蓝色
+    const orangeRefs=new Set();
+    const blueRefs=new Set();
+
+    for(const op of sol.ops){
+      const row1=DATA.slotToRow[op.s1]+1;
+      const row2=DATA.slotToRow[op.s2]+1;
+      const col=DATA.classes[op.ci].excelCol;
+      const ref1=col+row1;
+      const ref2=col+row2;
+
+      if(op.kind==="primary"){
+        orangeRefs.add(ref1);
+        orangeRefs.add(ref2);
+      }else{
+        blueRefs.add(ref1);
+        blueRefs.add(ref2);
+      }
+    }
+
+    // 若同一格同时出现，申请人主调课优先显示橙色
+    for(const ref of orangeRefs) blueRefs.delete(ref);
+
+    const styleCache=new Map();
+    function coloredStyleFor(ref,fillId){
+      const oldStyle=getCellStyleId(ref);
+      const key=oldStyle+"|"+fillId;
+      if(styleCache.has(key)) return styleCache.get(key);
+      const newStyle=cloneStyleWithFill(oldStyle,fillId);
+      styleCache.set(key,newStyle);
+      return newStyle;
+    }
+
+    for(const ref of blueRefs){
+      setCellStyleId(ref,coloredStyleFor(ref,blueFillId));
+    }
+    for(const ref of orangeRefs){
+      setCellStyleId(ref,coloredStyleFor(ref,orangeFillId));
+    }
+
+    zip.file(stylesPath,stylesXml);
+
     // 只修改 C:U、13个有效上课时段对应单元格的“共享字符串索引”。
     // 单元格自身的 style(s)、行高、列宽、合并、边框、底色、对齐、
     // 自动换行、打印设置、标题、班主任、人数、教室等均不触碰。
@@ -636,7 +757,7 @@ async function downloadNewTable(){
 
       for(let ci=0;ci<DATA.classes.length;ci++){
         const ref=DATA.classes[ci].excelCol+excelRow;
-        const sstIndex=workingState[slot][ci].sstIndex;
+        const sstIndex=sol.state[slot][ci].sstIndex;
 
         if(sstIndex===undefined || sstIndex===null){
           throw new Error("课程数据缺少原格式索引："+ref);
@@ -678,13 +799,13 @@ async function downloadNewTable(){
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
     a.href=url;
-    a.download="调课新表_保持原版式_"+new Date().toISOString().slice(0,10)+".xlsx";
+    a.download="调课新表_0910基础_橙蓝标记_"+new Date().toISOString().slice(0,10)+".xlsx";
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1500);
 
-    // 生成后清除当前申请，但保留累计后的 workingState。
+    // 生成后清除当前申请；下一次调课仍重新从总课表0910开始。
     document.getElementById("input").value="";
     document.getElementById("plans").innerHTML="";
     currentSolutions=[];
