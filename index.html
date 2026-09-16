@@ -141,7 +141,7 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
     <button class="blue" onclick="downloadNewTable()">生成新课表</button>
     <button class="blue" onclick="clearAll()">清屏</button>
   </div>
-<div class="footer">沙河教务 V260916-2</div>
+<div class="footer">沙河教务 V260916-4</div>
 </div>
 
 <div id="browser">
@@ -151,7 +151,7 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
 </div>
 
 <script>
-const APP_VERSION = "V260916-2";
+const APP_VERSION = "V260916-4";
 async function checkLatestVersion(){
   if(location.protocol==="file:") return;
   try{
@@ -456,8 +456,10 @@ function solveAll(parsed){
 }
 
 function opText(op, idx, total){
+  const c=DATA.classes[op.ci].label;
+  const a=op.a.teacher || "未知";
   const b=op.b.teacher || "未知";
-  return `可以和${formatSlot(op.s2)}${b}对调${idx===total?"，可完成。":"。"}`;
+  return `${idx}:${c}${formatSlot(op.s1)}${a}和${formatSlot(op.s2)}${b}对调${idx===total?"，可完成。":"。"}`;
 }
 
 function escapeHtml(s){
@@ -502,26 +504,40 @@ function opHtml(op, idx, total){
   const a=escapeHtml(op.a.teacher || "未知");
   const b=escapeHtml(op.b.teacher || "未知");
 
-  // 先按原有逻辑构造完整方案内容。
-  // 班级名仍保留可点击弹窗能力。
-  const beforeFirstAnd =
-    `${idx}:<span class="classClick" onclick="showClassInfo(${op.ci},this)">${escapeHtml(c.label)}</span>${escapeHtml(formatSlot(op.s1))}${a}`;
-
-  const afterFirstAnd =
-    `和${escapeHtml(formatSlot(op.s2))}${b}对调${idx===total?"，可完成。":"。"}`;
-
-  // 新规则：仅删除“第一次出现的和”之前的全部字符，
-  // 改为“可以”；这个“和”以及后面的所有内容全部保留。
-  // 为继续保留被省略班级的弹窗功能，“可以”本身仍可点击。
-  return `<span class="classClick" title="点击查看${escapeHtml(c.label)}信息" onclick="showClassInfo(${op.ci},this)">可以</span>${afterFirstAnd}`;
+  return `${idx}:<span class="classClick" onclick="showClassInfo(${op.ci},this)">${escapeHtml(c.label)}</span>${escapeHtml(formatSlot(op.s1))}${a}和${escapeHtml(formatSlot(op.s2))}${b}对调${idx===total?"，可完成。":"。"}`;
 }
 
 function solutionText(sol){
-  return sol.ops.map((o,i)=>opText(o,(i+1),sol.ops.length)).join("\n");
+  const lines=sol.ops.map((o,i)=>opText(o,(i+1),sol.ops.length));
+  if(!lines.length) return "";
+
+  const first=lines[0];
+  const pos=first.indexOf("和");
+  if(pos>=0){
+    lines[0]="可以和同班"+first.slice(pos+1);
+  }
+  return lines.join("\n");
 }
 
 function solutionHtml(sol){
-  return sol.ops.map((o,i)=>opHtml(o,(i+1),sol.ops.length)).join("<br>");
+  const lines=sol.ops.map((o,i)=>opHtml(o,(i+1),sol.ops.length));
+  if(!lines.length) return "";
+
+  // 只修改整个方案框中第一次出现“和”之前的内容，
+  // 并在“和”字后增加“同班”两字。
+  // “可以”仍保留第一条原班级的点击弹窗功能。
+  const firstOp=sol.ops[0];
+  const firstClass=DATA.classes[firstOp.ci];
+  const pos=lines[0].indexOf("和");
+  if(pos>=0){
+    lines[0]=
+      `<span class="classClick" title="点击查看${escapeHtml(firstClass.label)}信息" onclick="showClassInfo(${firstOp.ci},this)">可以</span>`+
+      "和同班"+
+      lines[0].slice(pos+1);
+  }
+
+  // 第二条及以后完全保持原方案设计
+  return lines.join("<br>");
 }
 
 function showClassInfo(ci,el){
