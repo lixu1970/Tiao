@@ -141,7 +141,7 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
     <button class="blue" onclick="downloadNewTable()">生成新课表</button>
     <button class="blue" onclick="clearAll()">清屏</button>
   </div>
-<div class="footer">沙河教务 V260916-1</div>
+<div class="footer">沙河教务 V260916-2</div>
 </div>
 
 <div id="browser">
@@ -151,7 +151,7 @@ td.slot{position:sticky;left:0;background:#f8fafc;font-weight:700;min-width:48px
 </div>
 
 <script>
-const APP_VERSION = "V260916-1";
+const APP_VERSION = "V260916-2";
 async function checkLatestVersion(){
   if(location.protocol==="file:") return;
   try{
@@ -499,8 +499,21 @@ document.addEventListener("click",e=>{
 
 function opHtml(op, idx, total){
   const c=DATA.classes[op.ci];
+  const a=escapeHtml(op.a.teacher || "未知");
   const b=escapeHtml(op.b.teacher || "未知");
-  return `<span class="classClick" title="点击查看${escapeHtml(c.label)}信息" onclick="showClassInfo(${op.ci},this)">可以</span>和${escapeHtml(formatSlot(op.s2))}${b}对调${idx===total?"，可完成。":"。"}`;
+
+  // 先按原有逻辑构造完整方案内容。
+  // 班级名仍保留可点击弹窗能力。
+  const beforeFirstAnd =
+    `${idx}:<span class="classClick" onclick="showClassInfo(${op.ci},this)">${escapeHtml(c.label)}</span>${escapeHtml(formatSlot(op.s1))}${a}`;
+
+  const afterFirstAnd =
+    `和${escapeHtml(formatSlot(op.s2))}${b}对调${idx===total?"，可完成。":"。"}`;
+
+  // 新规则：仅删除“第一次出现的和”之前的全部字符，
+  // 改为“可以”；这个“和”以及后面的所有内容全部保留。
+  // 为继续保留被省略班级的弹窗功能，“可以”本身仍可点击。
+  return `<span class="classClick" title="点击查看${escapeHtml(c.label)}信息" onclick="showClassInfo(${op.ci},this)">可以</span>${afterFirstAnd}`;
 }
 
 function solutionText(sol){
